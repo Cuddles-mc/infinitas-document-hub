@@ -1,0 +1,10 @@
+Candidate: {candidate_name}
+Role applied for: {position}
+Referee: {referee_name}
+Referee current position: {referee_title}
+Referee previous position: {referee_previous}
+
+TRANSCRIPT:
+{transcript}
+
+Read the entire transcript and write an answer for each of the 26 questions. Return valid JSON only.
