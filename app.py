@@ -1,5 +1,154 @@
-import streamlit as st
+"""Infinitas Document Hub - branded document generator for the team."""
 
-st.set_page_config(page_title="Infinitas Document Hub", page_icon="I", layout="wide")
+import streamlit as st
+from datetime import date
+
+st.set_page_config(
+    page_title="Infinitas Document Hub",
+    page_icon="I",
+    layout="wide",
+)
+
+
+# --- Auth Gate ---
+def check_password():
+    """Simple password gate for team access."""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    st.title("Infinitas Document Hub")
+    password = st.text_input("Team password", type="password")
+    if password:
+        if password == st.secrets["APP_PASSWORD"]:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    return False
+
+
+if not check_password():
+    st.stop()
+
+
+# --- Sidebar Navigation ---
+DOCUMENT_TYPES = {
+    "Reference Check": "reference_check",
+    "Placement Letters (coming soon)": None,
+    "Assignment Confirmation (coming soon)": None,
+    "CV Profile (coming soon)": None,
+}
+
+st.sidebar.title("Document Hub")
+selected = st.sidebar.radio("Document type", list(DOCUMENT_TYPES.keys()))
+
+# --- Header ---
 st.title("Infinitas Document Hub")
-st.write("Coming soon...")
+
+# --- Reference Check Page ---
+if DOCUMENT_TYPES[selected] == "reference_check":
+    from generators.reference_check import generate_docx, QUESTIONS
+    from ai import process_reference_transcript
+
+    st.header("Reference Check")
+
+    # Form fields
+    col1, col2 = st.columns(2)
+    with col1:
+        candidate_name = st.text_input("Candidate name *")
+        position = st.text_input("Role applied for *")
+        completed_by = st.selectbox(
+            "Completed by",
+            ["Tate McClenaghan", "Jason Elston", "Kelsi Halliday", "Aimee"],
+        )
+    with col2:
+        referee_name = st.text_input("Referee name *")
+        referee_title = st.text_input("Referee current position")
+        referee_previous = st.text_input("Referee previous position (optional)")
+
+    transcript = st.text_area(
+        "Paste Granola transcript",
+        height=300,
+        placeholder="Paste the full reference call transcript here...",
+    )
+
+    # --- Generate ---
+    if st.button("Generate Reference", type="primary"):
+        if not candidate_name or not position or not referee_name:
+            st.error("Please fill in all required fields (marked with *).")
+        elif not transcript.strip():
+            st.error("Please paste the transcript.")
+        else:
+            with st.spinner("Processing transcript with AI..."):
+                try:
+                    answers = process_reference_transcript(
+                        candidate_name=candidate_name,
+                        position=position,
+                        referee_name=referee_name,
+                        referee_title=referee_title,
+                        referee_previous=referee_previous,
+                        transcript=transcript,
+                    )
+                    st.session_state.ref_answers = answers
+                    st.session_state.ref_metadata = {
+                        "candidate_name": candidate_name,
+                        "position": position,
+                        "referee_name": referee_name,
+                        "referee_title": referee_title,
+                        "referee_previous": referee_previous,
+                        "completed_by": completed_by,
+                        "reference_date": date.today().strftime("%d/%m/%Y"),
+                    }
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error processing transcript: {e}")
+
+    # --- Review & Edit ---
+    if "ref_answers" in st.session_state:
+        st.divider()
+        st.subheader("Review & Edit Answers")
+        st.caption("Edit any answer below before downloading the document.")
+
+        answers = st.session_state.ref_answers
+        edited_answers = {}
+
+        for i, question in enumerate(QUESTIONS):
+            key = str(i)
+            current = answers.get(key, "")
+            is_gap = current.startswith("[GAP]")
+
+            label = f"Q{i+1}: {question}"
+            if is_gap:
+                label += "  ⚠️ NEEDS REVIEW"
+
+            edited = st.text_area(
+                label,
+                value=current.replace("[GAP] ", ""),
+                height=120 if len(current) > 200 else 80,
+                key=f"answer_{i}",
+            )
+            edited_answers[key] = edited
+
+        # --- Download ---
+        st.divider()
+        metadata = st.session_state.ref_metadata
+        data = {**metadata, "answers": edited_answers}
+
+        try:
+            docx_bytes = generate_docx(data)
+            filename = f"Reference Check for {metadata['candidate_name']} from {metadata['referee_name']}.docx"
+            st.download_button(
+                label="Download .docx",
+                data=docx_bytes,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+            )
+        except Exception as e:
+            st.error(f"Error generating document: {e}")
+
+else:
+    st.info("This document type is coming soon.")
