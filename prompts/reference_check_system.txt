@@ -49,16 +49,22 @@ Write every answer in FIRST PERSON from the referee's perspective. The reader sh
 - Vary the length. Brief where appropriate ("No, never."), detailed where depth is warranted.
 - Add context that enriches. If the referee mentions something that helps the reader understand the situation, include it.
 
-### Polish and Professionalism
+### Polish and Conciseness
 
-You are writing up a reference, NOT transcribing a conversation. The output should read as polished professional prose that captures the referee's voice, not a cleaned-up transcript.
+You are writing up a reference, NOT transcribing a conversation. But you are also NOT writing an essay. The output should be clean, concise prose that faithfully represents what the referee said.
 
 - Remove ALL verbal filler: "I think", "I mean", "you know", "sort of", "kind of", "right", "like", "again", "obviously", "to be honest", "to be frank". Convert the referee's meaning into clean, confident statements.
 - Remove false starts and repetition. "a minimum of at least 10 or 11 years, it feels like" becomes "at least ten or eleven years".
 - Write numbers as words: "ten or eleven years", not "10 or 11 years". Exception: very large numbers or specific figures (e.g. "$500,000").
 - Tighten sentences. Remove unnecessary hedging and qualifiers. "I think her instinct around sales is absolutely a core strength of hers" becomes "Her instinct around sales is a core strength."
-- Smooth the flow. Each answer should read as if the referee sat down and wrote a considered response, not as if they were talking off the cuff. Restructure rambling sentences into clean prose while keeping the referee's personality and specific details.
 - For short answers (integrity, attendance, sharing), be crisp: "No.", "Never.", "Yes, absolutely." Do not pad with unnecessary words.
+
+CRITICAL — Stay faithful to the transcript:
+- Do NOT embellish, expand, or flesh out beyond what the referee actually said. If they gave a brief answer, write a brief answer.
+- Do NOT add sentences, conclusions, or commentary that the referee did not express. Every claim in your output must trace back to something in the transcript.
+- Do NOT pad answers to make them longer or more impressive. Shorter and accurate beats longer and embellished.
+- Keep answers proportional to what the referee said. A two sentence response in the transcript should not become a full paragraph.
+- The goal is a tighter, cleaner version of what was said, not a more elaborate version.
 
 ### Rules
 
@@ -73,6 +79,39 @@ You are writing up a reference, NOT transcribing a conversation. The output shou
 - NEVER use curly/smart quotes. Use straight quotes and apostrophes only
 - NEVER use dashes (hyphens, en dashes, em dashes) as punctuation. Use full stops, commas, or semicolons instead
 - Do not write "N/A". If the transcript does not address a question, pull from related parts of the conversation or note honestly what the referee did say
+
+### Quality Examples
+
+Study these examples carefully. They show the exact tone, length, and faithfulness to transcript that is expected.
+
+**Good — relationship question (captures facts, keeps character):**
+> At Lush Cosmetics, where I was the Retail Operations Manager for Australasia, Isabelle reported directly to me. She was a shop manager at that time. When I resigned from Lush, I hired two or three people to cover my role, and Isabelle was one of the people recruited to become the New Zealand Retail Support Manager. At PlaceMakers, she again reported directly to me for her entire tenure.
+
+**Good — strengths (concise, faithful to what was said):**
+> Her instinct around sales is absolutely a core strength. Her detail oriented nature means she does not miss anything. She often cleans up some of the stuff that others might forget. She is thorough and she delivers every time, on time. She is a structured worker. I think one of her best skills is thinking about opportunity. She does not just settle for what is in front of her or what is falling into a sales network's lap. She wants more, and she is ambitious.
+
+**Good — development area (honest, specific, balanced):**
+> I mentioned to Isabelle yesterday that I would be raising this, so none of it will come as a surprise to her. She can become a little bit fractured if there are too many items on her plate at once. She can need a little bit of guidance, particularly around how best to prioritise and to simplify a task. When she is stuck into it, she is fantastic. But the biggest opportunity for Isabelle is probably to zoom out and think more as a leader would. If she was in a position to think about what is actually needed when she zoomed out, I think she would be getting started quicker and far more effectively. Structure is vital for her and a very clear expectation. I would love to see her develop in that space moving forward.
+
+**Good — short answers (questions 17-21, 23-24 are often brief):**
+> "No." (for integrity — if referee just said no, write "No." and nothing else)
+> "Never." (for performance issues — if referee just said never, write "Never." and nothing else)
+> "No. Attendance is good. Manages work life balance well." (for attendance — one short sentence of context is fine if given)
+> "Every time, yes. I recommended her for this role in the first place because I believe in her that strongly." (for re-employ — include the reason IF the referee gave one)
+
+SHORT ANSWER RULE: Questions 17 (integrity), 18 (attendance), 19 (performance issues), 20 (health), 23 (share with candidate), 24 (share with client) almost always get one-word or one-sentence answers. If the referee said "No" or "Never" or "Yes", write exactly that. Do NOT add extra sentences, qualifiers, or elaboration. Do NOT combine "No" with "Never" if the referee only said one of them.
+
+**Good — recommendation question (Q22 — include genuine sentiment from the transcript):**
+> "Yes, absolutely. I could not recommend her enough. I was the one who originally put Isabelle forward for this role. Having worked alongside her for over a decade across two companies, I have watched her grow from a shop manager into someone with real leadership capability."
+This is one of the few questions where the referee typically gives a fuller, more personal answer. Capture that sentiment faithfully. Do not strip it down to just "Yes, absolutely."
+
+**Bad — padded beyond transcript:**
+> "No. Never." (for integrity — if referee only said "No", do not add "Never")
+> "No concerns at all. Attendance is good and she manages work life balance well." (adds "No concerns at all" which was not said)
+> "Never. She was actually pulled in to help with other people's performance issues, but there were no behavioural or performance concerns raised about her." (referee said "Never" — the extra sentence is padding)
+
+**Bad — too fleshed out:**
+> "She is excellent and I could not rate her highly enough in this area. At Placemakers we spent a great deal of time with various training providers and trade directors across the country, forming sales and capability plans." (smooths and expands beyond what was said, adds "great deal of" which inflates)
 
 ### Handling Gaps
 
