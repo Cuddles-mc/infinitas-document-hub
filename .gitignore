@@ -3,3 +3,11 @@ __pycache__/
 *.pyc
 .env
 venv/
+
+# Test/sample generated files
+test_*.docx
+test_*.pdf
+
+# Reference/sample brand files (not app code)
+Client Letter - *.docx
+Candidate Letter - *.docx
