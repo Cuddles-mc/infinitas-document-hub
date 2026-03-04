@@ -2,13 +2,19 @@
 
 Takes a data dict with placement details, returns branded .docx bytes
 for Client Confirmation and/or Candidate Confirmation letters.
+
+Header: Infinitas logo right-aligned in Word header.
+Footer: Infinitas logo centred + address text in Word footer.
+Matches reference files exactly.
 """
 
 import io
+import os
 from datetime import datetime
 
 from docx import Document
 from docx.shared import Pt, Emu, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
@@ -17,6 +23,8 @@ from docx.oxml import parse_xml
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "placement")
+
 CONSULTANT_DETAILS = {
     "Jason Beith": {"key": "jason", "title": "Director"},
     "Tate McClenaghan": {"key": "tate", "title": "Partner"},
@@ -27,19 +35,33 @@ CONSULTANT_DETAILS = {
 PRIMARY_BLUE = RGBColor(0x00, 0x48, 0x99)
 DARK_NAVY = RGBColor(0x0E, 0x28, 0x41)
 BODY_TEXT = RGBColor(0x37, 0x41, 0x51)
+FOOTER_GREY = RGBColor(0x76, 0x76, 0x76)
 
 # Font settings
 FONT_NAME = "Aptos"
 FONT_SIZE = Pt(10.5)
+FOOTER_FONT_SIZE = Pt(8)
 
 # Page margins (matching reference files)
 MARGIN_TOP = Emu(698500)     # ~1.94cm
 MARGIN_SIDES = Emu(762000)   # ~2.12cm
 
+# Image sizes from reference
+HEADER_LOGO_WIDTH = Emu(1714500)   # ~4.76cm
+FOOTER_LOGO_WIDTH = Emu(1428750)   # ~3.97cm
+
+# Header/footer distance from page edge
+HEADER_FOOTER_DISTANCE = Emu(449580)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _get_logo_path():
+    """Get path to the Infinitas logo."""
+    return os.path.join(ASSETS_DIR, "header_logo.png")
+
+
 def _set_run_font(run, font_name=FONT_NAME, font_size=FONT_SIZE, color=BODY_TEXT, bold=False):
     """Apply consistent font formatting to a run."""
     run.font.name = font_name
@@ -89,13 +111,73 @@ def _set_document_defaults(doc):
     rFonts.set(qn("w:eastAsia"), FONT_NAME)
 
 
-def _set_page_margins(doc):
-    """Set page margins to match reference files."""
+def _set_page_layout(doc):
+    """Set page margins, header/footer distance."""
     for section in doc.sections:
         section.top_margin = MARGIN_TOP
         section.bottom_margin = MARGIN_SIDES
         section.left_margin = MARGIN_SIDES
         section.right_margin = MARGIN_SIDES
+        section.header_distance = HEADER_FOOTER_DISTANCE
+        section.footer_distance = HEADER_FOOTER_DISTANCE
+
+
+def _add_blue_border(para, edge="bottom"):
+    """Add a blue (#004899) single border to a paragraph edge."""
+    pPr = para._p.get_or_add_pPr()
+    pBdr = parse_xml(
+        f'<w:pBdr {nsdecls("w")}>'
+        f'  <w:{edge} w:val="single" w:sz="8" w:space="1" w:color="004899"/>'
+        f'</w:pBdr>'
+    )
+    pPr.append(pBdr)
+
+
+def _add_header(doc):
+    """Add branded header: logo right-aligned, blue rule underneath."""
+    section = doc.sections[0]
+    header = section.header
+    header.is_linked_to_previous = False
+
+    # Logo paragraph — right-aligned
+    logo_para = header.paragraphs[0]
+    logo_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run = logo_para.add_run()
+    run.add_picture(_get_logo_path(), width=HEADER_LOGO_WIDTH)
+
+    # Empty paragraph with blue bottom border (the blue line under header)
+    rule_para = header.add_paragraph()
+    _add_blue_border(rule_para, "bottom")
+
+
+def _add_footer(doc):
+    """Add branded footer: blue rule on top, centred logo, address, URL."""
+    section = doc.sections[0]
+    footer = section.footer
+    footer.is_linked_to_previous = False
+
+    # Empty paragraph with blue top border (the blue line above footer)
+    rule_para = footer.paragraphs[0]
+    rule_para.text = ""
+    _add_blue_border(rule_para, "top")
+
+    # Logo — centred
+    logo_para = footer.add_paragraph()
+    logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = logo_para.add_run()
+    run.add_picture(_get_logo_path(), width=FOOTER_LOGO_WIDTH)
+
+    # Address line — grey, 8pt, centred
+    addr_para = footer.add_paragraph()
+    addr_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = addr_para.add_run("Infinitas Talent Limited, PO BOX 357, Shortland Street, Auckland, 1140")
+    _set_run_font(run, font_size=FOOTER_FONT_SIZE, color=FOOTER_GREY)
+
+    # URL — grey, 8pt, centred
+    url_para = footer.add_paragraph()
+    url_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = url_para.add_run("https://infinitas.co.nz")
+    _set_run_font(run, font_size=FOOTER_FONT_SIZE, color=FOOTER_GREY)
 
 
 def _add_address_block(doc, lines):
@@ -105,19 +187,40 @@ def _add_address_block(doc, lines):
 
 
 def _add_details_table(doc, rows_data):
-    """Add a simple bordered table with blue labels (matching reference style)."""
+    """Add a bordered table with blue labels (matching reference style)."""
     table = doc.add_table(rows=len(rows_data), cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
+
+    # Set table-level borders: thin single lines all around and between cells
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = parse_xml(f'<w:tblPr {nsdecls("w")}/>')
+        tbl.insert(0, tblPr)
+    # Remove any existing borders
+    existing = tblPr.find(qn("w:tblBorders"))
+    if existing is not None:
+        tblPr.remove(existing)
+    tblBorders = parse_xml(
+        f'<w:tblBorders {nsdecls("w")}>'
+        f'  <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        f'  <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        f'  <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        f'  <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        f'  <w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        f'  <w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+        f'</w:tblBorders>'
+    )
+    tblPr.append(tblBorders)
 
     for row_idx, (label, value) in enumerate(rows_data):
         row = table.rows[row_idx]
 
         # Label cell — blue text
         label_cell = row.cells[0]
-        label_cell.width = Emu(2122 * 635)  # ~2122 twentieths of a point
+        label_cell.width = Emu(2122 * 635)
         label_cell.paragraphs[0].paragraph_format.space_before = Pt(2)
         label_cell.paragraphs[0].paragraph_format.space_after = Pt(2)
-        # Leading space before label text (matching reference)
         label_run = label_cell.paragraphs[0].add_run(f" {label}")
         _set_run_font(label_run, color=PRIMARY_BLUE, bold=False, font_size=FONT_SIZE)
 
@@ -132,13 +235,28 @@ def _add_details_table(doc, rows_data):
     return table
 
 
+def _get_signature_path(consultant_key):
+    """Get path to consultant's signature image, or None if not available."""
+    path = os.path.join(ASSETS_DIR, f"{consultant_key}_signature.png")
+    return path if os.path.exists(path) else None
+
+
 def _add_sign_off(doc, consultant_name, consultant_title):
-    """Add sign-off block: name in bold navy, title in blue (matching reference)."""
+    """Add sign-off block: signature image (or blank lines), name in bold navy, title in blue."""
     _add_paragraph(doc, "Yours sincerely,", space_after=Pt(0), space_before=Pt(12))
 
-    # Blank lines for signature space
-    for _ in range(3):
-        _add_paragraph(doc, "", space_after=Pt(0), space_before=Pt(0))
+    # Signature image or blank lines
+    details = CONSULTANT_DETAILS.get(consultant_name, {"key": "tate", "title": "Partner"})
+    sig_path = _get_signature_path(details["key"])
+    if sig_path:
+        sig_para = doc.add_paragraph()
+        sig_para.paragraph_format.space_before = Pt(4)
+        sig_para.paragraph_format.space_after = Pt(4)
+        run = sig_para.add_run()
+        run.add_picture(sig_path, height=Emu(600000))  # ~1.67cm tall
+    else:
+        for _ in range(3):
+            _add_paragraph(doc, "", space_after=Pt(0), space_before=Pt(0))
 
     # Name — bold, dark navy
     _add_paragraph(doc, consultant_name, color=DARK_NAVY, bold=True,
@@ -175,7 +293,9 @@ def generate_client_letter(data: dict) -> bytes:
 
     doc = Document()
     _set_document_defaults(doc)
-    _set_page_margins(doc)
+    _set_page_layout(doc)
+    _add_header(doc)
+    _add_footer(doc)
 
     # Date
     _add_paragraph(doc, letter_date, space_after=Pt(12), space_before=Pt(0))
@@ -263,7 +383,9 @@ def generate_candidate_letter(data: dict) -> bytes:
 
     doc = Document()
     _set_document_defaults(doc)
-    _set_page_margins(doc)
+    _set_page_layout(doc)
+    _add_header(doc)
+    _add_footer(doc)
 
     # Date
     _add_paragraph(doc, letter_date, space_after=Pt(12), space_before=Pt(0))

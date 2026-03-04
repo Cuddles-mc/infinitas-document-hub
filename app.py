@@ -1,5 +1,6 @@
 """Infinitas Document Hub - branded document generator for the team."""
 
+import io
 import streamlit as st
 from datetime import date, datetime
 
@@ -156,12 +157,111 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
 
     st.header("Placement Letters")
 
+    # --- Spreadsheet Upload ---
+    uploaded_xlsx = st.file_uploader(
+        "Upload Candidate Details.xlsx (optional — pre-fills the form)",
+        type=["xlsx"],
+        key="pl_upload",
+    )
+
+    if uploaded_xlsx and "pl_xlsx_parsed" not in st.session_state:
+        try:
+            from openpyxl import load_workbook
+            import io as _io
+
+            wb = load_workbook(_io.BytesIO(uploaded_xlsx.read()), read_only=True, data_only=True)
+            ws = wb.active
+
+            section_headers = {"Candidate", "Role", "Placement", "Referee 1", "Referee 2"}
+            field_map = {
+                ("Candidate", "Full Name"): "candidate_name",
+                ("Candidate", "Address Line 1"): "candidate_address_line_1",
+                ("Candidate", "Address Line 2"): "candidate_address_line_2",
+                ("Role", "Position"): "position",
+                ("Role", "Client Company"): "client_company",
+                ("Role", "Client Contact"): "client_contact_name",
+                ("Role", "Consultant"): "consultant_raw",
+                ("Placement", "Start Date"): "start_date",
+                ("Placement", "Salary (Permanent)"): "salary",
+                ("Placement", "Pay Rate (Contract)"): "pay_rate",
+                ("Placement", "Reporting Manager"): "reporting_manager",
+                ("Placement", "Client Address Line 1"): "client_address_line_1",
+                ("Placement", "Client Address Line 2"): "client_address_line_2",
+            }
+
+            parsed = {}
+            current_section = None
+            for row in ws.iter_rows(min_row=1, max_row=ws.max_row, max_col=2):
+                label = str(row[0].value or "").strip()
+                value = row[1].value
+                if isinstance(value, datetime):
+                    value = f"{value.day} {value.strftime('%B')} {value.year}"
+                else:
+                    value = str(value).strip() if value is not None else ""
+                if label in section_headers and not value:
+                    current_section = label
+                    continue
+                if not label or not current_section:
+                    continue
+                key = (current_section, label)
+                if key in field_map:
+                    parsed[field_map[key]] = value
+            wb.close()
+
+            # Resolve consultant name
+            consultant_map = {
+                "jason": "Jason Beith", "jason beith": "Jason Beith",
+                "kelsi": "Kelsi Flynn", "kelsi flynn": "Kelsi Flynn",
+                "tate": "Tate McClenaghan", "tate mcclenaghan": "Tate McClenaghan",
+            }
+            raw_consultant = parsed.get("consultant_raw", "")
+            parsed["consultant"] = consultant_map.get(raw_consultant.lower(), "Tate McClenaghan")
+
+            # Combine address lines
+            parsed["candidate_address"] = "\n".join(
+                l for l in [parsed.get("candidate_address_line_1", ""), parsed.get("candidate_address_line_2", "")] if l
+            )
+            parsed["client_address"] = "\n".join(
+                l for l in [parsed.get("client_address_line_1", ""), parsed.get("client_address_line_2", "")] if l
+            )
+
+            # Use salary or pay rate
+            if not parsed.get("salary"):
+                parsed["salary"] = parsed.get("pay_rate", "")
+
+            # Set widget keys directly in session state so form pre-fills
+            st.session_state.pl_candidate = parsed.get("candidate_name", "")
+            st.session_state.pl_candidate_addr = parsed.get("candidate_address", "")
+            st.session_state.pl_position = parsed.get("position", "")
+            st.session_state.pl_salary = parsed.get("salary", "")
+            st.session_state.pl_company = parsed.get("client_company", "")
+            st.session_state.pl_contact = parsed.get("client_contact_name", "")
+            st.session_state.pl_client_addr = parsed.get("client_address", "")
+            st.session_state.pl_manager = parsed.get("reporting_manager", "")
+
+            # Consultant selectbox uses index
+            consultant_options = ["Jason Beith", "Tate McClenaghan", "Kelsi Flynn"]
+            st.session_state.pl_consultant_idx = (
+                consultant_options.index(parsed["consultant"])
+                if parsed.get("consultant") in consultant_options
+                else 1
+            )
+
+            st.session_state.pl_xlsx_parsed = True
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error reading spreadsheet: {e}")
+
     # Form fields
     col1, col2 = st.columns(2)
+    consultant_options = ["Jason Beith", "Tate McClenaghan", "Kelsi Flynn"]
+    consultant_idx = st.session_state.get("pl_consultant_idx", 1)
+
     with col1:
         pl_consultant = st.selectbox(
             "Consultant",
-            ["Jason Beith", "Tate McClenaghan", "Kelsi Flynn"],
+            consultant_options,
+            index=consultant_idx,
         )
         pl_candidate_name = st.text_input("Candidate name *", key="pl_candidate")
         pl_candidate_address = st.text_area(
@@ -271,26 +371,29 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
         docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         pdf_mime = "application/pdf"
 
-        for letter_type, docx_bytes in generated.items():
-            label = "Client" if letter_type == "client" else "Candidate"
-            base_name = f"Confirmation of Placement - {candidate} ({label})"
+        company = data["client_company"]
 
-            dl_cols = st.columns(2)
+        # Build all files for individual + zip download
+        all_files = {}  # name -> bytes
+
+        for letter_type, docx_bytes in generated.items():
+            if letter_type == "client":
+                label = "Client Letter"
+                base_name = f"{candidate} Placement Confirmation for {company}"
+            else:
+                label = "Candidate Letter"
+                base_name = f"Placement Confirmation {candidate} at {company}"
+
             if pl_fmt_docx:
-                with dl_cols[0]:
-                    st.download_button(
-                        label=f"Download {label} .docx",
-                        data=docx_bytes,
-                        file_name=f"{base_name}.docx",
-                        mime=docx_mime,
-                        key=f"dl_{letter_type}_docx",
-                    )
+                all_files[f"{base_name}.docx"] = docx_bytes
+
             if pl_fmt_pdf:
-                with dl_cols[1]:
-                    # Convert docx bytes to PDF
+                try:
+                    import tempfile, os
+                    import pythoncom
+                    from docx2pdf import convert
+                    pythoncom.CoInitialize()
                     try:
-                        import tempfile
-                        from docx2pdf import convert
                         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
                             tmp.write(docx_bytes)
                             tmp_docx = tmp.name
@@ -298,20 +401,55 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                         convert(tmp_docx, tmp_pdf)
                         with open(tmp_pdf, "rb") as f:
                             pdf_bytes = f.read()
-                        import os
                         os.unlink(tmp_docx)
                         os.unlink(tmp_pdf)
-                        st.download_button(
-                            label=f"Download {label} .pdf",
-                            data=pdf_bytes,
-                            file_name=f"{base_name}.pdf",
-                            mime=pdf_mime,
-                            key=f"dl_{letter_type}_pdf",
-                        )
-                    except ImportError:
-                        st.warning(f"PDF conversion not available (docx2pdf not installed). Download .docx instead.")
-                    except Exception as e:
-                        st.warning(f"PDF conversion failed: {e}. Download .docx instead.")
+                        all_files[f"{base_name}.pdf"] = pdf_bytes
+                    finally:
+                        pythoncom.CoUninitialize()
+                except ImportError:
+                    st.warning("PDF conversion not available (docx2pdf or pywin32 not installed).")
+                except Exception as e:
+                    st.warning(f"PDF conversion failed: {e}")
+
+            # Individual download buttons
+            dl_cols = st.columns(2)
+            docx_key = f"{base_name}.docx"
+            pdf_key = f"{base_name}.pdf"
+            if docx_key in all_files:
+                with dl_cols[0]:
+                    st.download_button(
+                        label=f"Download {label} .docx",
+                        data=all_files[docx_key],
+                        file_name=docx_key,
+                        mime=docx_mime,
+                        key=f"dl_{letter_type}_docx",
+                    )
+            if pdf_key in all_files:
+                with dl_cols[1]:
+                    st.download_button(
+                        label=f"Download {label} .pdf",
+                        data=all_files[pdf_key],
+                        file_name=pdf_key,
+                        mime=pdf_mime,
+                        key=f"dl_{letter_type}_pdf",
+                    )
+
+        # Download All as ZIP
+        if len(all_files) > 1:
+            import zipfile
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname, fbytes in all_files.items():
+                    zf.writestr(fname, fbytes)
+            st.divider()
+            st.download_button(
+                label="Download All (.zip)",
+                data=zip_buffer.getvalue(),
+                file_name=f"Placement Letters - {candidate}.zip",
+                mime="application/zip",
+                type="primary",
+                key="dl_all_zip",
+            )
 
 else:
     st.info("This document type is coming soon.")
