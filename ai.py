@@ -45,7 +45,7 @@ def process_reference_transcript(
     )
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5-20241022",
         max_tokens=8192,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
