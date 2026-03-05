@@ -108,9 +108,14 @@ def convert_docx_to_pdf_graph(docx_bytes: bytes, filename: str = "document.docx"
 def save_to_onedrive(
     file_bytes: bytes,
     filename: str,
-    folder_path: str,
+    folder_id: str | None = None,
+    drive_id: str | None = None,
+    folder_path: str | None = None,
 ) -> tuple[str | None, str | None]:
-    """Save a file to OneDrive under the given folder path.
+    """Save a file to OneDrive.
+
+    Uses folder_id + drive_id if available (most reliable).
+    Falls back to folder_path if no ID provided.
 
     Returns:
         Tuple of (web_url, error_message). One will be None.
@@ -120,9 +125,15 @@ def save_to_onedrive(
         return None, "Not authenticated. Sign out and back in."
 
     headers = {"Authorization": f"Bearer {token}"}
-    base = _drive_base_url()
-    safe_path = folder_path.replace("\\", "/")
-    upload_url = f"{base}/root:/{safe_path}/{filename}:/content"
+
+    if folder_id and drive_id:
+        upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{folder_id}:/{filename}:/content"
+    elif folder_path:
+        base = _drive_base_url()
+        safe_path = folder_path.replace("\\", "/")
+        upload_url = f"{base}/root:/{safe_path}/{filename}:/content"
+    else:
+        return None, "No folder specified."
 
     resp = requests.put(
         upload_url,
@@ -265,35 +276,65 @@ def _drive_base_url() -> str:
     return "https://graph.microsoft.com/v1.0/me/drive"
 
 
-def search_candidate_folder(candidate_name: str) -> list[str]:
+def search_candidate_folder(candidate_name: str) -> list[dict]:
     """Search for a candidate's folder in Day to Day/Candidates/.
 
-    Returns list of matching folder paths.
+    Returns list of dicts with 'path', 'id', and 'driveId' keys.
     """
     token = st.session_state.get("ms_access_token")
     if not token:
         return []
 
     headers = {"Authorization": f"Bearer {token}"}
-    base = _drive_base_url()
 
-    url = (
-        f"{base}/root:/{CANDIDATES_FOLDER}:/children"
-        f"?$filter=folder ne null&$select=name,parentReference&$top=200"
+    # Try each possible drive endpoint
+    endpoints = [
+        _drive_base_url(),
+        "https://graph.microsoft.com/v1.0/me/drive",
+    ]
+
+    # Also try all user drives
+    drives_resp = requests.get(
+        "https://graph.microsoft.com/v1.0/me/drives?$select=id",
+        headers=headers, timeout=15,
     )
-    resp = requests.get(url, headers=headers, timeout=15)
-    if resp.status_code != 200:
-        return []
+    if drives_resp.status_code == 200:
+        for d in drives_resp.json().get("value", []):
+            endpoints.append(f"https://graph.microsoft.com/v1.0/drives/{d['id']}")
 
-    # Match folders containing the candidate name (case-insensitive)
+    # Deduplicate
+    seen = set()
+    unique_endpoints = []
+    for ep in endpoints:
+        if ep not in seen:
+            seen.add(ep)
+            unique_endpoints.append(ep)
+
     name_lower = candidate_name.lower()
     matches = []
-    for item in resp.json().get("value", []):
-        folder_name = item["name"]
-        if name_lower in folder_name.lower():
-            matches.append(f"{CANDIDATES_FOLDER}/{folder_name}")
 
-    return sorted(matches)
+    for base in unique_endpoints:
+        url = (
+            f"{base}/root:/{CANDIDATES_FOLDER}:/children"
+            f"?$filter=folder ne null&$select=name,id,parentReference&$top=200"
+        )
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            continue
+
+        for item in resp.json().get("value", []):
+            folder_name = item["name"]
+            if name_lower in folder_name.lower():
+                drive_id = item.get("parentReference", {}).get("driveId", "")
+                matches.append({
+                    "path": f"{CANDIDATES_FOLDER}/{folder_name}",
+                    "id": item["id"],
+                    "driveId": drive_id,
+                })
+        if matches:
+            break  # Found on this drive, no need to check others
+
+    return matches
 
 
 def build_outlook_compose_url(

@@ -387,14 +387,19 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
             st.session_state[f"folder_results_{candidate}"] = search_candidate_folder(candidate)
 
         folder_results = st.session_state[f"folder_results_{candidate}"]
+        save_folder_id = None
+        save_drive_id = None
 
         if folder_results:
-            options = folder_results + ["Other (type manually)"]
+            options = [f["path"] for f in folder_results] + ["Other (type manually)"]
             chosen = st.selectbox("Candidate folder found", options, key="save_folder_select")
             if chosen == "Other (type manually)":
                 save_folder = st.text_input("Folder path *", value=f"{CANDIDATES_FOLDER}/{candidate}", key="save_folder_manual")
             else:
                 save_folder = chosen
+                match = next(f for f in folder_results if f["path"] == chosen)
+                save_folder_id = match["id"]
+                save_drive_id = match["driveId"]
         else:
             save_folder = st.text_input(
                 "OneDrive folder path *",
@@ -501,7 +506,12 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     saved_count = 0
                     errors = []
                     for fname, fbytes in all_files.items():
-                        url, err = save_to_onedrive(fbytes, fname, save_folder)
+                        url, err = save_to_onedrive(
+                            fbytes, fname,
+                            folder_id=save_folder_id,
+                            drive_id=save_drive_id,
+                            folder_path=save_folder if not save_folder_id else None,
+                        )
                         if url:
                             saved_count += 1
                         elif err:
