@@ -53,7 +53,7 @@ if st.sidebar.button("Sign out", use_container_width=True):
     st.rerun()
 
 # --- Header ---
-st.title(f"{brand['short_name']} Document Hub")
+st.title("Document Hub")
 
 # --- Reference Check Page ---
 if DOCUMENT_TYPES[selected] == "reference_check":
