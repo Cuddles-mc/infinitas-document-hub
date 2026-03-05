@@ -400,6 +400,8 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                 match = next(f for f in folder_results if f["path"] == chosen)
                 save_folder_id = match["id"]
                 save_drive_id = match["driveId"]
+                with st.expander("Debug info"):
+                    st.code(f"Folder ID: {save_folder_id}\nDrive ID: {save_drive_id}\nPath: {save_folder}")
         else:
             save_folder = st.text_input(
                 "OneDrive folder path *",
