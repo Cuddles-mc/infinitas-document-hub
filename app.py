@@ -1,8 +1,45 @@
 """Infinitas Document Hub - branded document generator for the team."""
 
 import io
+import os
+import platform
+import subprocess
+import tempfile
 import streamlit as st
 from datetime import date, datetime
+
+
+def convert_docx_to_pdf(docx_bytes: bytes) -> bytes | None:
+    """Convert .docx bytes to .pdf bytes. Works on Windows (Word) and Linux (LibreOffice)."""
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_docx = os.path.join(tmp_dir, "doc.docx")
+            with open(tmp_docx, "wb") as f:
+                f.write(docx_bytes)
+
+            if platform.system() == "Windows":
+                import pythoncom
+                from docx2pdf import convert
+                pythoncom.CoInitialize()
+                try:
+                    tmp_pdf = os.path.join(tmp_dir, "doc.pdf")
+                    convert(tmp_docx, tmp_pdf)
+                finally:
+                    pythoncom.CoUninitialize()
+            else:
+                # Linux — use LibreOffice headless
+                subprocess.run(
+                    ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", tmp_dir, tmp_docx],
+                    check=True, capture_output=True, timeout=30,
+                )
+                tmp_pdf = os.path.join(tmp_dir, "doc.pdf")
+
+            if os.path.exists(tmp_pdf):
+                with open(tmp_pdf, "rb") as f:
+                    return f.read()
+    except Exception:
+        return None
+    return None
 
 st.set_page_config(
     page_title="Infinitas Document Hub",
@@ -388,28 +425,11 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                 all_files[f"{base_name}.docx"] = docx_bytes
 
             if pl_fmt_pdf:
-                try:
-                    import tempfile, os
-                    import pythoncom
-                    from docx2pdf import convert
-                    pythoncom.CoInitialize()
-                    try:
-                        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-                            tmp.write(docx_bytes)
-                            tmp_docx = tmp.name
-                        tmp_pdf = tmp_docx.replace(".docx", ".pdf")
-                        convert(tmp_docx, tmp_pdf)
-                        with open(tmp_pdf, "rb") as f:
-                            pdf_bytes = f.read()
-                        os.unlink(tmp_docx)
-                        os.unlink(tmp_pdf)
-                        all_files[f"{base_name}.pdf"] = pdf_bytes
-                    finally:
-                        pythoncom.CoUninitialize()
-                except ImportError:
-                    st.warning("PDF conversion not available (docx2pdf or pywin32 not installed).")
-                except Exception as e:
-                    st.warning(f"PDF conversion failed: {e}")
+                pdf_bytes = convert_docx_to_pdf(docx_bytes)
+                if pdf_bytes:
+                    all_files[f"{base_name}.pdf"] = pdf_bytes
+                else:
+                    st.warning(f"PDF conversion failed for {label}. Download .docx instead.")
 
             # Individual download buttons
             dl_cols = st.columns(2)
