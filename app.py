@@ -378,13 +378,13 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     st.warning(f"PDF conversion failed for {letter_type} letter.")
 
         # --- Step 1: Save Location (mandatory) ---
-        from ms_auth import search_onedrive_folders
+        from ms_auth import search_candidate_folder, CANDIDATES_FOLDER
 
         st.subheader("1. Save Location")
 
-        # Search for existing candidate folder
+        # Search for existing candidate folder in Day to Day/Candidates/
         if f"folder_results_{candidate}" not in st.session_state:
-            st.session_state[f"folder_results_{candidate}"] = search_onedrive_folders(candidate)
+            st.session_state[f"folder_results_{candidate}"] = search_candidate_folder(candidate)
 
         folder_results = st.session_state[f"folder_results_{candidate}"]
 
@@ -392,13 +392,13 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
             options = folder_results + ["Other (type manually)"]
             chosen = st.selectbox("Candidate folder found", options, key="save_folder_select")
             if chosen == "Other (type manually)":
-                save_folder = st.text_input("Folder path *", value=f"Placements/{candidate}", key="save_folder_manual")
+                save_folder = st.text_input("Folder path *", value=f"{CANDIDATES_FOLDER}/{candidate}", key="save_folder_manual")
             else:
                 save_folder = chosen
         else:
             save_folder = st.text_input(
                 "OneDrive folder path *",
-                value=f"Placements/{candidate}",
+                value=f"{CANDIDATES_FOLDER}/{candidate}",
                 key="save_folder",
                 help="Folder will be created automatically if it doesn't exist.",
             )

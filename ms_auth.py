@@ -206,35 +206,38 @@ def create_onedrive_folder(path: str) -> bool:
     return True
 
 
-def search_onedrive_folders(query: str) -> list[str]:
-    """Search OneDrive for folders matching a query string.
+CANDIDATES_FOLDER = "Day to Day/Candidates"
 
-    Returns list of folder paths (e.g. ['Placements/Sarah Chen', 'Clients/Sarah Chen']).
+
+def search_candidate_folder(candidate_name: str) -> list[str]:
+    """Search for a candidate's folder in Day to Day/Candidates/.
+
+    Returns list of matching folder paths.
     """
     token = st.session_state.get("ms_access_token")
     if not token:
         return []
 
     headers = {"Authorization": f"Bearer {token}"}
+
+    # First try listing children of the Candidates folder and matching by name
     url = (
-        f"https://graph.microsoft.com/v1.0/me/drive/root/search(q='{query}')"
-        f"?$filter=folder ne null&$select=name,parentReference&$top=10"
+        f"https://graph.microsoft.com/v1.0/me/drive/root:/{CANDIDATES_FOLDER}:/children"
+        f"?$filter=folder ne null&$select=name&$top=200"
     )
     resp = requests.get(url, headers=headers, timeout=15)
     if resp.status_code != 200:
         return []
 
-    paths = []
+    # Match folders containing the candidate name (case-insensitive)
+    name_lower = candidate_name.lower()
+    matches = []
     for item in resp.json().get("value", []):
-        parent_path = item.get("parentReference", {}).get("path", "")
-        if "root:" in parent_path:
-            parent = parent_path.split("root:")[-1].lstrip("/")
-            full_path = f"{parent}/{item['name']}" if parent else item["name"]
-        else:
-            full_path = item["name"]
-        paths.append(full_path)
+        folder_name = item["name"]
+        if name_lower in folder_name.lower():
+            matches.append(f"{CANDIDATES_FOLDER}/{folder_name}")
 
-    return sorted(paths)
+    return sorted(matches)
 
 
 def build_outlook_compose_url(
