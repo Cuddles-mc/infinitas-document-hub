@@ -378,74 +378,13 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     st.warning(f"PDF conversion failed for {letter_type} letter.")
 
         # --- Step 1: Save Location (mandatory) ---
-        from ms_auth import list_onedrive_folders, create_onedrive_folder
-
         st.subheader("1. Save Location")
-
-        # Initialise browser state
-        if "browse_path" not in st.session_state:
-            st.session_state.browse_path = ""
-        if "selected_folder" not in st.session_state:
-            st.session_state.selected_folder = ""
-
-        current_path = st.session_state.browse_path
-        display_path = current_path or "OneDrive (root)"
-
-        st.caption(f"Current: **{display_path}**")
-
-        folders = list_onedrive_folders(current_path)
-
-        browse_cols = st.columns([1, 3, 1])
-
-        with browse_cols[0]:
-            if current_path and st.button("Up", key="browse_up"):
-                parts = current_path.split("/")
-                st.session_state.browse_path = "/".join(parts[:-1])
-                st.rerun()
-
-        with browse_cols[2]:
-            if st.button("Select This Folder", key="browse_select"):
-                st.session_state.selected_folder = current_path
-
-        if folders:
-            folder_names = [f["name"] for f in folders]
-            chosen = st.selectbox(
-                "Subfolders",
-                ["(choose a folder)"] + folder_names,
-                key="browse_list",
-            )
-            if chosen != "(choose a folder)":
-                if st.button(f"Open '{chosen}'", key="browse_open"):
-                    match = next(f for f in folders if f["name"] == chosen)
-                    st.session_state.browse_path = match["path"]
-                    st.rerun()
-        elif folders is not None:
-            st.caption("No subfolders here.")
-
-        # Create new subfolder
-        new_col1, new_col2 = st.columns([3, 1])
-        with new_col1:
-            new_folder_name = st.text_input(
-                "Create new subfolder",
-                placeholder=candidate,
-                key="new_subfolder",
-            )
-        with new_col2:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Create", key="browse_create") and new_folder_name:
-                new_path = f"{current_path}/{new_folder_name}" if current_path else new_folder_name
-                with st.spinner("Creating folder..."):
-                    create_onedrive_folder(new_path)
-                st.session_state.browse_path = new_path
-                st.session_state.selected_folder = new_path
-                st.rerun()
-
-        # Final selected path
-        save_folder = st.session_state.selected_folder or current_path
-        if save_folder:
-            st.success(f"Saving to: **{save_folder}**")
-        else:
-            st.warning("Browse to a folder or create one.")
+        save_folder = st.text_input(
+            "OneDrive folder path *",
+            value=f"Placements/{candidate}",
+            key="save_folder",
+            help="Folder will be created automatically if it doesn't exist.",
+        )
 
         # --- Step 2: Email Preview ---
         st.subheader("2. Email Preview")
