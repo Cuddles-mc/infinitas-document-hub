@@ -8,7 +8,7 @@ import streamlit as st
 
 
 AUTHORITY = f"https://login.microsoftonline.com/{st.secrets['MS_TENANT_ID']}"
-SCOPES = ["Files.ReadWrite", "User.Read", "Mail.ReadWrite"]
+SCOPES = ["Files.ReadWrite", "User.Read"]
 
 
 def _get_msal_app():
@@ -206,67 +206,19 @@ def create_onedrive_folder(path: str) -> bool:
     return True
 
 
-def create_draft(
+def build_outlook_compose_url(
     to_email: str,
     subject: str,
-    body_html: str,
-    attachments: list[tuple[str, bytes]] | None = None,
-) -> str | None:
-    """Create an email draft in Outlook via Graph API, return the web link to open it.
+    body: str,
+) -> str:
+    """Build an Outlook Web compose URL with pre-filled fields.
 
-    The draft includes attachments and will pick up the user's Outlook signature
-    when opened in Outlook.
-
-    Returns:
-        Outlook Web URL to open the draft, or None on failure.
+    Opens a new email in Outlook Web with signature automatically included.
     """
-    token = st.session_state.get("ms_access_token")
-    if not token:
-        return None
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
-
-    message = {
-        "subject": subject,
-        "body": {
-            "contentType": "HTML",
-            "content": body_html,
-        },
-        "toRecipients": [
-            {"emailAddress": {"address": to_email}}
-        ],
-    }
-
-    # Create the draft
-    resp = requests.post(
-        "https://graph.microsoft.com/v1.0/me/messages",
-        headers=headers,
-        json=message,
-        timeout=30,
+    from urllib.parse import quote
+    return (
+        f"https://outlook.office365.com/mail/deeplink/compose"
+        f"?to={quote(to_email)}"
+        f"&subject={quote(subject)}"
+        f"&body={quote(body)}"
     )
-    if resp.status_code != 201:
-        return None
-
-    draft = resp.json()
-    draft_id = draft["id"]
-    web_link = draft.get("webLink")
-
-    # Add attachments to the draft
-    if attachments:
-        for filename, file_bytes in attachments:
-            attachment = {
-                "@odata.type": "#microsoft.graph.fileAttachment",
-                "name": filename,
-                "contentBytes": base64.b64encode(file_bytes).decode("utf-8"),
-            }
-            requests.post(
-                f"https://graph.microsoft.com/v1.0/me/messages/{draft_id}/attachments",
-                headers=headers,
-                json=attachment,
-                timeout=30,
-            )
-
-    return web_link

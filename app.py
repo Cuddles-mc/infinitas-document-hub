@@ -351,7 +351,7 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
 
     # --- Review, Save & Send ---
     if "pl_generated" in st.session_state:
-        from ms_auth import create_draft, save_to_onedrive
+        from ms_auth import build_outlook_compose_url, save_to_onedrive
 
         st.divider()
         data = st.session_state.pl_data
@@ -513,14 +513,14 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
         actions = []
         actions.append(f"Save {len(all_files)} file(s) to **{save_folder}**")
         if client_email:
-            actions.append(f"Draft client email to **{client_email}** (opens in Outlook)")
+            actions.append(f"Open client email in Outlook")
         if cand_email:
-            actions.append(f"Draft candidate email to **{cand_email}** (opens in Outlook)")
+            actions.append(f"Open candidate email in Outlook")
         st.markdown("**Actions:**\n" + "\n".join(f"- {a}" for a in actions))
 
         btn_cols = st.columns([2, 1, 1])
         with btn_cols[0]:
-            go = st.button("Save & Draft Emails", type="primary", key="go_all")
+            go = st.button("Save & Prepare Emails", type="primary", key="go_all")
         with btn_cols[1]:
             # Download-only fallback
             if len(all_files) > 0:
@@ -542,7 +542,6 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                 st.error("Save folder is required.")
             else:
                 results = []
-                draft_links = []
 
                 with st.spinner("Saving files to OneDrive..."):
                     saved_count = 0
@@ -555,42 +554,22 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     else:
                         st.error("Failed to save to OneDrive. You may need to sign out and back in.")
 
-                if client_email:
-                    with st.spinner("Creating client email draft..."):
-                        client_attachments = [
-                            (fname, fbytes) for fname, fbytes in all_files.items()
-                            if "Confirmation for" in fname and fname.endswith(".pdf")
-                        ]
-                        html_body = client_body.replace("\n", "<br>")
-                        link = create_draft(client_email, client_subject, html_body, client_attachments)
-                        if link:
-                            results.append(f"Client email drafted")
-                            draft_links.append(("Client Email", link))
-                        else:
-                            st.error("Failed to create client email draft.")
-
-                if cand_email:
-                    with st.spinner("Creating candidate email draft..."):
-                        cand_attachments = [
-                            (fname, fbytes) for fname, fbytes in all_files.items()
-                            if f"Confirmation {candidate}" in fname and fname.endswith(".pdf")
-                        ]
-                        html_body = cand_body.replace("\n", "<br>")
-                        link = create_draft(cand_email, cand_subject, html_body, cand_attachments)
-                        if link:
-                            results.append(f"Candidate email drafted")
-                            draft_links.append(("Candidate Email", link))
-                        else:
-                            st.error("Failed to create candidate email draft.")
-
                 if results:
                     st.success("Done: " + " | ".join(results))
 
-                # Show links to open drafts in Outlook
-                if draft_links:
-                    st.markdown("**Open in Outlook to review, add signature & send:**")
-                    for label, link in draft_links:
-                        st.link_button(f"Open {label} in Outlook", link)
+                # Build Outlook compose links
+                st.markdown("**Open in Outlook — your signature is included automatically.**")
+                st.caption(f"Attach PDFs from OneDrive: **{save_folder}**")
+
+                email_btns = st.columns(2)
+                if client_email:
+                    with email_btns[0]:
+                        url = build_outlook_compose_url(client_email, client_subject, client_body)
+                        st.link_button("Open Client Email in Outlook", url)
+                if cand_email:
+                    with email_btns[1]:
+                        url = build_outlook_compose_url(cand_email, cand_subject, cand_body)
+                        st.link_button("Open Candidate Email in Outlook", url)
 
 else:
     st.info("This document type is coming soon.")
