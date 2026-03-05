@@ -113,7 +113,7 @@ def _set_document_defaults(doc):
 
 
 def _set_page_layout(doc):
-    """Set page margins, header/footer distance."""
+    """Set page margins, header/footer distance, vertical centering."""
     for section in doc.sections:
         section.top_margin = MARGIN_TOP
         section.bottom_margin = MARGIN_SIDES
@@ -121,6 +121,10 @@ def _set_page_layout(doc):
         section.right_margin = MARGIN_SIDES
         section.header_distance = HEADER_FOOTER_DISTANCE
         section.footer_distance = HEADER_FOOTER_DISTANCE
+        # Vertically centre body content on page
+        sectPr = section._sectPr
+        vAlign = parse_xml(f'<w:vAlign {nsdecls("w")} w:val="center"/>')
+        sectPr.append(vAlign)
 
 
 def _add_blue_border(para, edge="bottom"):
