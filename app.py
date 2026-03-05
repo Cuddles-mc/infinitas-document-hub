@@ -351,7 +351,7 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
 
     # --- Review, Save & Send ---
     if "pl_generated" in st.session_state:
-        from ms_auth import build_outlook_compose_url, save_to_onedrive
+        from ms_auth import build_outlook_compose_url
 
         st.divider()
         data = st.session_state.pl_data
@@ -378,43 +378,8 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     st.warning(f"PDF conversion failed for {letter_type} letter.")
 
         # --- Step 1: Save Location (mandatory) ---
-        from ms_auth import search_candidate_folder, CANDIDATES_FOLDER, debug_drives
-
-        st.subheader("1. Save Location")
-        with st.expander("Debug: OneDrive info"):
-            if st.button("Show drives & folders", key="debug_drives"):
-                st.code(debug_drives())
-
-        # Search for existing candidate folder in Day to Day/Candidates/
-        if f"folder_results_{candidate}" not in st.session_state:
-            st.session_state[f"folder_results_{candidate}"] = search_candidate_folder(candidate)
-
-        folder_results = st.session_state[f"folder_results_{candidate}"]
-        save_folder_id = None
-        save_drive_id = None
-
-        if folder_results:
-            options = [f["path"] for f in folder_results] + ["Other (type manually)"]
-            chosen = st.selectbox("Candidate folder found", options, key="save_folder_select")
-            if chosen == "Other (type manually)":
-                save_folder = st.text_input("Folder path *", value=f"{CANDIDATES_FOLDER}/{candidate}", key="save_folder_manual")
-            else:
-                save_folder = chosen
-                match = next(f for f in folder_results if f["path"] == chosen)
-                save_folder_id = match["id"]
-                save_drive_id = match["driveId"]
-                with st.expander("Debug info"):
-                    st.code(f"Folder ID: {save_folder_id}\nDrive ID: {save_drive_id}\nPath: {save_folder}")
-        else:
-            save_folder = st.text_input(
-                "OneDrive folder path *",
-                value=f"{CANDIDATES_FOLDER}/{candidate}",
-                key="save_folder",
-                help="Folder will be created automatically if it doesn't exist.",
-            )
-
-        # --- Step 2: Email Preview ---
-        st.subheader("2. Email Preview")
+        # --- Step 1: Email Preview ---
+        st.subheader("1. Email Preview")
         st.caption("Review and edit before sending. Leave email blank to skip.")
 
         email_cols = st.columns(2)
@@ -472,76 +437,52 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
             else:
                 cand_email = ""
 
-        # --- Step 3: Do Everything ---
         st.divider()
 
-        # Summary of what will happen
-        actions = []
-        actions.append(f"Save {len(all_files)} file(s) to **{save_folder}**")
+        # Download files
+        st.subheader("3. Download")
+        docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        pdf_mime = "application/pdf"
+
+        for fname, fbytes in all_files.items():
+            mime = pdf_mime if fname.endswith(".pdf") else docx_mime
+            st.download_button(
+                label=f"Download {fname}",
+                data=fbytes,
+                file_name=fname,
+                mime=mime,
+                key=f"dl_{fname}",
+            )
+
+        if len(all_files) > 1:
+            import zipfile
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname, fbytes in all_files.items():
+                    zf.writestr(fname, fbytes)
+            st.download_button(
+                label=f"Download All (.zip)",
+                data=zip_buffer.getvalue(),
+                file_name=f"Placement Letters - {candidate}.zip",
+                mime="application/zip",
+                type="primary",
+                key="dl_all_zip",
+            )
+
+        # Outlook compose links
+        st.divider()
+        st.subheader("4. Email")
+        st.caption("Opens Outlook with your signature. Attach the downloaded PDFs.")
+
+        email_btns = st.columns(2)
         if client_email:
-            actions.append(f"Open client email in Outlook")
+            with email_btns[0]:
+                url = build_outlook_compose_url(client_email, client_subject, client_body)
+                st.link_button("Open Client Email in Outlook", url)
         if cand_email:
-            actions.append(f"Open candidate email in Outlook")
-        st.markdown("**Actions:**\n" + "\n".join(f"- {a}" for a in actions))
-
-        btn_cols = st.columns([2, 1, 1])
-        with btn_cols[0]:
-            go = st.button("Save & Prepare Emails", type="primary", key="go_all")
-        with btn_cols[1]:
-            # Download-only fallback
-            if len(all_files) > 0:
-                import zipfile
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                    for fname, fbytes in all_files.items():
-                        zf.writestr(fname, fbytes)
-                st.download_button(
-                    label="Download Only",
-                    data=zip_buffer.getvalue(),
-                    file_name=f"Placement Letters - {candidate}.zip",
-                    mime="application/zip",
-                    key="dl_only_zip",
-                )
-
-        if go:
-            if not save_folder.strip():
-                st.error("Save folder is required.")
-            else:
-                with st.spinner("Saving files to OneDrive..."):
-                    saved_count = 0
-                    errors = []
-                    for fname, fbytes in all_files.items():
-                        url, err = save_to_onedrive(
-                            fbytes, fname,
-                            folder_id=save_folder_id,
-                            drive_id=save_drive_id,
-                            folder_path=save_folder if not save_folder_id else None,
-                        )
-                        if url:
-                            saved_count += 1
-                        elif err:
-                            errors.append(f"{fname}: {err}")
-                    if saved_count:
-                        st.success(f"Saved {saved_count} file(s) to {save_folder}")
-                    if errors:
-                        for e in errors:
-                            st.error(e)
-
-                # Always show Outlook compose links
-                st.divider()
-                st.markdown("**Open in Outlook — your signature is included automatically.**")
-                if saved_count:
-                    st.caption(f"Attach PDFs from OneDrive: **{save_folder}**")
-
-                email_btns = st.columns(2)
-                if client_email:
-                    with email_btns[0]:
-                        url = build_outlook_compose_url(client_email, client_subject, client_body)
-                        st.link_button("Open Client Email in Outlook", url)
-                if cand_email:
-                    with email_btns[1]:
-                        url = build_outlook_compose_url(cand_email, cand_subject, cand_body)
-                        st.link_button("Open Candidate Email in Outlook", url)
+            with email_btns[1]:
+                url = build_outlook_compose_url(cand_email, cand_subject, cand_body)
+                st.link_button("Open Candidate Email in Outlook", url)
 
 else:
     st.info("This document type is coming soon.")
