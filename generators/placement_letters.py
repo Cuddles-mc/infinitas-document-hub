@@ -10,6 +10,7 @@ Matches reference files exactly.
 
 import io
 import os
+import platform
 from datetime import datetime
 
 from docx import Document
@@ -37,8 +38,8 @@ DARK_NAVY = RGBColor(0x0E, 0x28, 0x41)
 BODY_TEXT = RGBColor(0x37, 0x41, 0x51)
 FOOTER_GREY = RGBColor(0x76, 0x76, 0x76)
 
-# Font settings
-FONT_NAME = "Aptos"
+# Font settings — Aptos on Windows, Calibri on Linux (Carlito is metric-compatible)
+FONT_NAME = "Aptos" if platform.system() == "Windows" else "Calibri"
 FONT_SIZE = Pt(10.5)
 FOOTER_FONT_SIZE = Pt(8)
 
