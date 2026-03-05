@@ -56,14 +56,7 @@ def ms_login():
         redirect_uri=st.secrets["MS_REDIRECT_URI"],
     )
     st.title("Infinitas Document Hub")
-    st.markdown(
-        f'<a href="{auth_url}" target="_self" style="'
-        f'display:inline-block;padding:12px 24px;'
-        f'background-color:#004899;color:white;text-decoration:none;'
-        f'border-radius:6px;font-weight:bold;font-size:16px;">'
-        f'Sign in with Microsoft</a>',
-        unsafe_allow_html=True,
-    )
+    st.link_button("Sign in with Microsoft", auth_url)
     return False
 
 
