@@ -1,45 +1,14 @@
 """Infinitas Document Hub - branded document generator for the team."""
 
 import io
-import os
-import platform
-import subprocess
-import tempfile
 import streamlit as st
 from datetime import date, datetime
 
 
-def convert_docx_to_pdf(docx_bytes: bytes) -> bytes | None:
-    """Convert .docx bytes to .pdf bytes. Works on Windows (Word) and Linux (LibreOffice)."""
-    try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_docx = os.path.join(tmp_dir, "doc.docx")
-            with open(tmp_docx, "wb") as f:
-                f.write(docx_bytes)
-
-            if platform.system() == "Windows":
-                import pythoncom
-                from docx2pdf import convert
-                pythoncom.CoInitialize()
-                try:
-                    tmp_pdf = os.path.join(tmp_dir, "doc.pdf")
-                    convert(tmp_docx, tmp_pdf)
-                finally:
-                    pythoncom.CoUninitialize()
-            else:
-                # Linux — use LibreOffice headless
-                subprocess.run(
-                    ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", tmp_dir, tmp_docx],
-                    check=True, capture_output=True, timeout=30,
-                )
-                tmp_pdf = os.path.join(tmp_dir, "doc.pdf")
-
-            if os.path.exists(tmp_pdf):
-                with open(tmp_pdf, "rb") as f:
-                    return f.read()
-    except Exception:
-        return None
-    return None
+def convert_docx_to_pdf(docx_bytes: bytes, filename: str = "document.docx") -> bytes | None:
+    """Convert .docx bytes to .pdf bytes via Microsoft Graph API."""
+    from ms_auth import convert_docx_to_pdf_graph
+    return convert_docx_to_pdf_graph(docx_bytes, filename)
 
 st.set_page_config(
     page_title="Infinitas Document Hub",
@@ -48,27 +17,10 @@ st.set_page_config(
 )
 
 
-# --- Auth Gate ---
-def check_password():
-    """Simple password gate for team access."""
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
+# --- Auth Gate (Microsoft OAuth) ---
+from ms_auth import ms_login
 
-    if st.session_state.authenticated:
-        return True
-
-    st.title("Infinitas Document Hub")
-    password = st.text_input("Team password", type="password")
-    if password:
-        if password == st.secrets["APP_PASSWORD"]:
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
-    return False
-
-
-if not check_password():
+if not ms_login():
     st.stop()
 
 
@@ -397,79 +349,175 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
             except Exception as e:
                 st.error(f"Error generating letters: {e}")
 
-    # Download section
+    # --- Review, Save & Send ---
     if "pl_generated" in st.session_state:
+        from ms_auth import send_email, save_to_onedrive
+
         st.divider()
-        st.subheader("Download")
         data = st.session_state.pl_data
         candidate = data["candidate_name"]
-        generated = st.session_state.pl_generated
-
-        docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        pdf_mime = "application/pdf"
-
         company = data["client_company"]
+        generated = st.session_state.pl_generated
+        client_first = data["client_contact_name"].split()[0]
+        cand_first = candidate.split()[0]
 
-        # Build all files for individual + zip download
-        all_files = {}  # name -> bytes
-
+        # Build all files
+        all_files = {}
         for letter_type, docx_bytes in generated.items():
             if letter_type == "client":
-                label = "Client Letter"
                 base_name = f"{candidate} Placement Confirmation for {company}"
             else:
-                label = "Candidate Letter"
                 base_name = f"Placement Confirmation {candidate} at {company}"
-
             if pl_fmt_docx:
                 all_files[f"{base_name}.docx"] = docx_bytes
-
             if pl_fmt_pdf:
                 pdf_bytes = convert_docx_to_pdf(docx_bytes)
                 if pdf_bytes:
                     all_files[f"{base_name}.pdf"] = pdf_bytes
                 else:
-                    st.warning(f"PDF conversion failed for {label}. Download .docx instead.")
+                    st.warning(f"PDF conversion failed for {letter_type} letter.")
 
-            # Individual download buttons
-            dl_cols = st.columns(2)
-            docx_key = f"{base_name}.docx"
-            pdf_key = f"{base_name}.pdf"
-            if docx_key in all_files:
-                with dl_cols[0]:
-                    st.download_button(
-                        label=f"Download {label} .docx",
-                        data=all_files[docx_key],
-                        file_name=docx_key,
-                        mime=docx_mime,
-                        key=f"dl_{letter_type}_docx",
-                    )
-            if pdf_key in all_files:
-                with dl_cols[1]:
-                    st.download_button(
-                        label=f"Download {label} .pdf",
-                        data=all_files[pdf_key],
-                        file_name=pdf_key,
-                        mime=pdf_mime,
-                        key=f"dl_{letter_type}_pdf",
-                    )
+        # --- Step 1: Save Location (mandatory) ---
+        st.subheader("1. Save Location")
+        save_folder = st.text_input(
+            "OneDrive folder *",
+            value=f"Placements/{candidate}",
+            key="save_folder",
+            help="Files will be saved to this folder in your OneDrive.",
+        )
 
-        # Download All as ZIP
-        if len(all_files) > 1:
-            import zipfile
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                for fname, fbytes in all_files.items():
-                    zf.writestr(fname, fbytes)
-            st.divider()
-            st.download_button(
-                label="Download All (.zip)",
-                data=zip_buffer.getvalue(),
-                file_name=f"Placement Letters - {candidate}.zip",
-                mime="application/zip",
-                type="primary",
-                key="dl_all_zip",
-            )
+        # --- Step 2: Email Preview ---
+        st.subheader("2. Email Preview")
+        st.caption("Review and edit before sending. Leave email blank to skip.")
+
+        email_cols = st.columns(2)
+
+        with email_cols[0]:
+            if "client" in generated:
+                st.markdown("**Client Letter**")
+                client_email = st.text_input(
+                    "To",
+                    key="email_client_addr",
+                    placeholder=f"{client_first.lower()}@company.co.nz",
+                )
+                client_subject = st.text_input(
+                    "Subject",
+                    value=f"Placement Confirmation - {candidate}, {data['position']}",
+                    key="email_client_subject",
+                )
+                client_body = st.text_area(
+                    "Email body",
+                    value=(
+                        f"Dear {client_first},\n\n"
+                        f"Please find attached the placement confirmation for "
+                        f"{candidate} as {data['position']} at {company}.\n\n"
+                        f"Kind regards"
+                    ),
+                    height=150,
+                    key="email_client_body",
+                )
+            else:
+                client_email = ""
+
+        with email_cols[1]:
+            if "candidate" in generated:
+                st.markdown("**Candidate Letter**")
+                cand_email = st.text_input(
+                    "To",
+                    key="email_cand_addr",
+                )
+                cand_subject = st.text_input(
+                    "Subject",
+                    value=f"Congratulations - {data['position']} at {company}",
+                    key="email_cand_subject",
+                )
+                cand_body = st.text_area(
+                    "Email body",
+                    value=(
+                        f"Dear {cand_first},\n\n"
+                        f"Congratulations on your new role. Please find attached "
+                        f"your placement confirmation for {data['position']} at {company}.\n\n"
+                        f"Kind regards"
+                    ),
+                    height=150,
+                    key="email_cand_body",
+                )
+            else:
+                cand_email = ""
+
+        # --- Step 3: Do Everything ---
+        st.divider()
+
+        # Summary of what will happen
+        actions = []
+        actions.append(f"Save {len(all_files)} file(s) to **{save_folder}**")
+        if client_email:
+            actions.append(f"Email client letter to **{client_email}**")
+        if cand_email:
+            actions.append(f"Email candidate letter to **{cand_email}**")
+        st.markdown("**Actions:**\n" + "\n".join(f"- {a}" for a in actions))
+
+        btn_cols = st.columns([2, 1, 1])
+        with btn_cols[0]:
+            go = st.button("Save & Send All", type="primary", key="go_all")
+        with btn_cols[1]:
+            # Download-only fallback
+            if len(all_files) > 0:
+                import zipfile
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for fname, fbytes in all_files.items():
+                        zf.writestr(fname, fbytes)
+                st.download_button(
+                    label="Download Only",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"Placement Letters - {candidate}.zip",
+                    mime="application/zip",
+                    key="dl_only_zip",
+                )
+
+        if go:
+            if not save_folder.strip():
+                st.error("Save folder is required.")
+            else:
+                results = []
+                with st.spinner("Saving files to OneDrive..."):
+                    saved_count = 0
+                    for fname, fbytes in all_files.items():
+                        url = save_to_onedrive(fbytes, fname, save_folder)
+                        if url:
+                            saved_count += 1
+                    if saved_count:
+                        results.append(f"Saved {saved_count} file(s) to {save_folder}")
+                    else:
+                        st.error("Failed to save to OneDrive. You may need to sign out and back in.")
+
+                if client_email:
+                    with st.spinner(f"Emailing client letter to {client_email}..."):
+                        client_attachments = [
+                            (fname, fbytes) for fname, fbytes in all_files.items()
+                            if "Confirmation for" in fname
+                        ]
+                        html_body = client_body.replace("\n", "<br>")
+                        if send_email(client_email, client_subject, html_body, client_attachments):
+                            results.append(f"Sent client letter to {client_email}")
+                        else:
+                            st.error(f"Failed to email client letter to {client_email}.")
+
+                if cand_email:
+                    with st.spinner(f"Emailing candidate letter to {cand_email}..."):
+                        cand_attachments = [
+                            (fname, fbytes) for fname, fbytes in all_files.items()
+                            if f"Confirmation {candidate}" in fname
+                        ]
+                        html_body = cand_body.replace("\n", "<br>")
+                        if send_email(cand_email, cand_subject, html_body, cand_attachments):
+                            results.append(f"Sent candidate letter to {cand_email}")
+                        else:
+                            st.error(f"Failed to email candidate letter to {cand_email}.")
+
+                if results:
+                    st.success("Done: " + " | ".join(results))
 
 else:
     st.info("This document type is coming soon.")
