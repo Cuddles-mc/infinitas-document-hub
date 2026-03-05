@@ -370,6 +370,19 @@ def debug_drives() -> str:
     else:
         output.append(f"Drives list failed: {resp.status_code} {resp.text[:200]}")
 
+    # Check Day to Day subfolders
+    dt_resp = requests.get(
+        "https://graph.microsoft.com/v1.0/me/drive/root:/Day to Day:/children?$select=name,folder&$top=30",
+        headers=headers, timeout=15,
+    )
+    if dt_resp.status_code == 200:
+        items = dt_resp.json().get("value", [])
+        folders = [item["name"] for item in items if "folder" in item]
+        output.append(f"\n=== Day to Day subfolders ===")
+        output.append(f"  {folders}")
+    else:
+        output.append(f"\n=== Day to Day: ERROR {dt_resp.status_code} ===")
+
     # Also check /me/drive directly
     resp2 = requests.get(
         "https://graph.microsoft.com/v1.0/me/drive?$select=id,name,driveType,webUrl",
