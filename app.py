@@ -1,4 +1,4 @@
-"""Infinitas Document Hub - branded document generator for the team."""
+"""Document Hub - branded document generator for the team."""
 
 import io
 import streamlit as st
@@ -11,20 +11,32 @@ def convert_docx_to_pdf(docx_bytes: bytes, filename: str = "document.docx") -> b
     return convert_docx_to_pdf_graph(docx_bytes, filename)
 
 st.set_page_config(
-    page_title="Infinitas Document Hub",
+    page_title="Document Hub",
     page_icon="I",
     layout="wide",
 )
 
 
-# --- Auth Gate (Microsoft OAuth) ---
+# --- Auth Gate ---
 from ms_auth import ms_login
 
 if not ms_login():
     st.stop()
 
 
-# --- Sidebar Navigation ---
+# --- Brand Detection ---
+from brands import get_brand, get_brand_css
+
+user_email = st.session_state.get("ms_email", "")
+brand = get_brand(user_email)
+st.markdown(get_brand_css(brand), unsafe_allow_html=True)
+
+
+# --- Sidebar ---
+st.sidebar.image(brand["logo_url"], use_container_width=True)
+st.sidebar.markdown(f"**{st.session_state.get('ms_user', 'User')}**")
+st.sidebar.divider()
+
 DOCUMENT_TYPES = {
     "Reference Check": "reference_check",
     "Placement Letters": "placement_letters",
@@ -32,11 +44,16 @@ DOCUMENT_TYPES = {
     "CV Profile (coming soon)": None,
 }
 
-st.sidebar.title("Document Hub")
-selected = st.sidebar.radio("Document type", list(DOCUMENT_TYPES.keys()))
+selected = st.sidebar.radio("Document type", list(DOCUMENT_TYPES.keys()), label_visibility="collapsed")
+
+st.sidebar.divider()
+if st.sidebar.button("Sign out", use_container_width=True):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
 
 # --- Header ---
-st.title("Infinitas Document Hub")
+st.title(f"{brand['short_name']} Document Hub")
 
 # --- Reference Check Page ---
 if DOCUMENT_TYPES[selected] == "reference_check":
@@ -377,7 +394,6 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                 else:
                     st.warning(f"PDF conversion failed for {letter_type} letter.")
 
-        # --- Step 1: Save Location (mandatory) ---
         # --- Step 1: Email Preview ---
         st.subheader("1. Email Preview")
         st.caption("Review and edit before sending. Leave email blank to skip.")
@@ -440,7 +456,7 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
         st.divider()
 
         # Download files
-        st.subheader("3. Download")
+        st.subheader("2. Download")
         docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         pdf_mime = "application/pdf"
 
@@ -471,8 +487,8 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
 
         # Outlook compose links
         st.divider()
-        st.subheader("4. Email")
-        st.caption("Opens Outlook with your signature. Attach the downloaded PDFs.")
+        st.subheader("3. Send via Outlook")
+        st.caption("Opens Outlook with your signature. Attach the downloaded files.")
 
         email_btns = st.columns(2)
         if client_email:
