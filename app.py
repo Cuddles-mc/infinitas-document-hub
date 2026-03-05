@@ -351,7 +351,7 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
 
     # --- Review, Save & Send ---
     if "pl_generated" in st.session_state:
-        from ms_auth import send_email, save_to_onedrive
+        from ms_auth import create_draft, save_to_onedrive
 
         st.divider()
         data = st.session_state.pl_data
@@ -378,13 +378,74 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     st.warning(f"PDF conversion failed for {letter_type} letter.")
 
         # --- Step 1: Save Location (mandatory) ---
+        from ms_auth import list_onedrive_folders, create_onedrive_folder
+
         st.subheader("1. Save Location")
-        save_folder = st.text_input(
-            "OneDrive folder *",
-            value=f"Placements/{candidate}",
-            key="save_folder",
-            help="Files will be saved to this folder in your OneDrive.",
-        )
+
+        # Initialise browser state
+        if "browse_path" not in st.session_state:
+            st.session_state.browse_path = ""
+        if "selected_folder" not in st.session_state:
+            st.session_state.selected_folder = ""
+
+        current_path = st.session_state.browse_path
+        display_path = current_path or "OneDrive (root)"
+
+        st.caption(f"Current: **{display_path}**")
+
+        folders = list_onedrive_folders(current_path)
+
+        browse_cols = st.columns([1, 3, 1])
+
+        with browse_cols[0]:
+            if current_path and st.button("Up", key="browse_up"):
+                parts = current_path.split("/")
+                st.session_state.browse_path = "/".join(parts[:-1])
+                st.rerun()
+
+        with browse_cols[2]:
+            if st.button("Select This Folder", key="browse_select"):
+                st.session_state.selected_folder = current_path
+
+        if folders:
+            folder_names = [f["name"] for f in folders]
+            chosen = st.selectbox(
+                "Subfolders",
+                ["(choose a folder)"] + folder_names,
+                key="browse_list",
+            )
+            if chosen != "(choose a folder)":
+                if st.button(f"Open '{chosen}'", key="browse_open"):
+                    match = next(f for f in folders if f["name"] == chosen)
+                    st.session_state.browse_path = match["path"]
+                    st.rerun()
+        elif folders is not None:
+            st.caption("No subfolders here.")
+
+        # Create new subfolder
+        new_col1, new_col2 = st.columns([3, 1])
+        with new_col1:
+            new_folder_name = st.text_input(
+                "Create new subfolder",
+                placeholder=candidate,
+                key="new_subfolder",
+            )
+        with new_col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Create", key="browse_create") and new_folder_name:
+                new_path = f"{current_path}/{new_folder_name}" if current_path else new_folder_name
+                with st.spinner("Creating folder..."):
+                    create_onedrive_folder(new_path)
+                st.session_state.browse_path = new_path
+                st.session_state.selected_folder = new_path
+                st.rerun()
+
+        # Final selected path
+        save_folder = st.session_state.selected_folder or current_path
+        if save_folder:
+            st.success(f"Saving to: **{save_folder}**")
+        else:
+            st.warning("Browse to a folder or create one.")
 
         # --- Step 2: Email Preview ---
         st.subheader("2. Email Preview")
@@ -452,14 +513,14 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
         actions = []
         actions.append(f"Save {len(all_files)} file(s) to **{save_folder}**")
         if client_email:
-            actions.append(f"Email client letter to **{client_email}**")
+            actions.append(f"Draft client email to **{client_email}** (opens in Outlook)")
         if cand_email:
-            actions.append(f"Email candidate letter to **{cand_email}**")
+            actions.append(f"Draft candidate email to **{cand_email}** (opens in Outlook)")
         st.markdown("**Actions:**\n" + "\n".join(f"- {a}" for a in actions))
 
         btn_cols = st.columns([2, 1, 1])
         with btn_cols[0]:
-            go = st.button("Save & Send All", type="primary", key="go_all")
+            go = st.button("Save & Draft Emails", type="primary", key="go_all")
         with btn_cols[1]:
             # Download-only fallback
             if len(all_files) > 0:
@@ -481,6 +542,8 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                 st.error("Save folder is required.")
             else:
                 results = []
+                draft_links = []
+
                 with st.spinner("Saving files to OneDrive..."):
                     saved_count = 0
                     for fname, fbytes in all_files.items():
@@ -493,31 +556,41 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                         st.error("Failed to save to OneDrive. You may need to sign out and back in.")
 
                 if client_email:
-                    with st.spinner(f"Emailing client letter to {client_email}..."):
+                    with st.spinner("Creating client email draft..."):
                         client_attachments = [
                             (fname, fbytes) for fname, fbytes in all_files.items()
-                            if "Confirmation for" in fname
+                            if "Confirmation for" in fname and fname.endswith(".pdf")
                         ]
                         html_body = client_body.replace("\n", "<br>")
-                        if send_email(client_email, client_subject, html_body, client_attachments):
-                            results.append(f"Sent client letter to {client_email}")
+                        link = create_draft(client_email, client_subject, html_body, client_attachments)
+                        if link:
+                            results.append(f"Client email drafted")
+                            draft_links.append(("Client Email", link))
                         else:
-                            st.error(f"Failed to email client letter to {client_email}.")
+                            st.error("Failed to create client email draft.")
 
                 if cand_email:
-                    with st.spinner(f"Emailing candidate letter to {cand_email}..."):
+                    with st.spinner("Creating candidate email draft..."):
                         cand_attachments = [
                             (fname, fbytes) for fname, fbytes in all_files.items()
-                            if f"Confirmation {candidate}" in fname
+                            if f"Confirmation {candidate}" in fname and fname.endswith(".pdf")
                         ]
                         html_body = cand_body.replace("\n", "<br>")
-                        if send_email(cand_email, cand_subject, html_body, cand_attachments):
-                            results.append(f"Sent candidate letter to {cand_email}")
+                        link = create_draft(cand_email, cand_subject, html_body, cand_attachments)
+                        if link:
+                            results.append(f"Candidate email drafted")
+                            draft_links.append(("Candidate Email", link))
                         else:
-                            st.error(f"Failed to email candidate letter to {cand_email}.")
+                            st.error("Failed to create candidate email draft.")
 
                 if results:
                     st.success("Done: " + " | ".join(results))
+
+                # Show links to open drafts in Outlook
+                if draft_links:
+                    st.markdown("**Open in Outlook to review, add signature & send:**")
+                    for label, link in draft_links:
+                        st.link_button(f"Open {label} in Outlook", link)
 
 else:
     st.info("This document type is coming soon.")
