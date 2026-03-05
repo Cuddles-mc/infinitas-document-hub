@@ -206,6 +206,37 @@ def create_onedrive_folder(path: str) -> bool:
     return True
 
 
+def search_onedrive_folders(query: str) -> list[str]:
+    """Search OneDrive for folders matching a query string.
+
+    Returns list of folder paths (e.g. ['Placements/Sarah Chen', 'Clients/Sarah Chen']).
+    """
+    token = st.session_state.get("ms_access_token")
+    if not token:
+        return []
+
+    headers = {"Authorization": f"Bearer {token}"}
+    url = (
+        f"https://graph.microsoft.com/v1.0/me/drive/root/search(q='{query}')"
+        f"?$filter=folder ne null&$select=name,parentReference&$top=10"
+    )
+    resp = requests.get(url, headers=headers, timeout=15)
+    if resp.status_code != 200:
+        return []
+
+    paths = []
+    for item in resp.json().get("value", []):
+        parent_path = item.get("parentReference", {}).get("path", "")
+        if "root:" in parent_path:
+            parent = parent_path.split("root:")[-1].lstrip("/")
+            full_path = f"{parent}/{item['name']}" if parent else item["name"]
+        else:
+            full_path = item["name"]
+        paths.append(full_path)
+
+    return sorted(paths)
+
+
 def build_outlook_compose_url(
     to_email: str,
     subject: str,

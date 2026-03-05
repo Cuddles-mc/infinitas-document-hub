@@ -378,13 +378,30 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     st.warning(f"PDF conversion failed for {letter_type} letter.")
 
         # --- Step 1: Save Location (mandatory) ---
+        from ms_auth import search_onedrive_folders
+
         st.subheader("1. Save Location")
-        save_folder = st.text_input(
-            "OneDrive folder path *",
-            value=f"Placements/{candidate}",
-            key="save_folder",
-            help="Folder will be created automatically if it doesn't exist.",
-        )
+
+        # Search for existing candidate folder
+        if f"folder_results_{candidate}" not in st.session_state:
+            st.session_state[f"folder_results_{candidate}"] = search_onedrive_folders(candidate)
+
+        folder_results = st.session_state[f"folder_results_{candidate}"]
+
+        if folder_results:
+            options = folder_results + ["Other (type manually)"]
+            chosen = st.selectbox("Candidate folder found", options, key="save_folder_select")
+            if chosen == "Other (type manually)":
+                save_folder = st.text_input("Folder path *", value=f"Placements/{candidate}", key="save_folder_manual")
+            else:
+                save_folder = chosen
+        else:
+            save_folder = st.text_input(
+                "OneDrive folder path *",
+                value=f"Placements/{candidate}",
+                key="save_folder",
+                help="Folder will be created automatically if it doesn't exist.",
+            )
 
         # --- Step 2: Email Preview ---
         st.subheader("2. Email Preview")
