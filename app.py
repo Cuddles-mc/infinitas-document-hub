@@ -33,7 +33,7 @@ st.markdown(get_brand_css(brand), unsafe_allow_html=True)
 
 
 # --- Sidebar ---
-st.sidebar.image(brand["logo_url"], use_container_width=True)
+st.sidebar.image(brand["logo_url"], width="stretch")
 st.sidebar.markdown(f"**{st.session_state.get('ms_user', 'User')}**")
 st.sidebar.divider()
 
@@ -47,7 +47,7 @@ DOCUMENT_TYPES = {
 selected = st.sidebar.radio("Document type", list(DOCUMENT_TYPES.keys()), label_visibility="collapsed")
 
 st.sidebar.divider()
-if st.sidebar.button("Sign out", use_container_width=True):
+if st.sidebar.button("Sign out", width="stretch"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()

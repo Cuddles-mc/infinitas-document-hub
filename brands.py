@@ -47,10 +47,10 @@ BRANDS = {
             "website": "luminoustalent.co.nz",
         },
     },
-    "orgintalent.co.nz": {
+    "origintalent.co.nz": {
         "name": "Origin Talent",
         "short_name": "Origin",
-        "domain": "orgintalent.co.nz",
+        "domain": "origintalent.co.nz",
         "logo_url": "https://origintalent.co.nz/wp-content/uploads/elementor/thumbs/OriginTalentLogo-ra35007ms5mqe7apg4ju028gr104pz5o2kvwnmnfyq.png",
         "colors": {
             "primary": "#FF7759",
@@ -72,12 +72,18 @@ BRANDS = {
 
 DEFAULT_BRAND = "infinitas.co.nz"
 
+# Aliases for domains with alternate spellings
+DOMAIN_ALIASES = {
+    "orgintalent.co.nz": "origintalent.co.nz",
+}
+
 
 def get_brand(email: str) -> dict:
     """Get brand config from user email domain."""
     if not email or "@" not in email:
         return BRANDS[DEFAULT_BRAND]
     domain = email.split("@")[-1].lower()
+    domain = DOMAIN_ALIASES.get(domain, domain)
     return BRANDS.get(domain, BRANDS[DEFAULT_BRAND])
 
 

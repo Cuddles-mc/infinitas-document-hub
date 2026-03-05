@@ -40,7 +40,25 @@ def ms_login():
             st.session_state.ms_authenticated = True
             st.session_state.ms_access_token = result["access_token"]
             st.session_state.ms_user = claims.get("name", "User")
-            st.session_state.ms_email = claims.get("preferred_username", "")
+            # Try multiple claim fields for email
+            email = (
+                claims.get("preferred_username")
+                or claims.get("email")
+                or claims.get("upn")
+                or ""
+            )
+            # Fallback: fetch from Graph API /me
+            if not email:
+                try:
+                    me = requests.get(
+                        "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName",
+                        headers={"Authorization": f"Bearer {result['access_token']}"},
+                        timeout=10,
+                    ).json()
+                    email = me.get("mail") or me.get("userPrincipalName") or ""
+                except Exception:
+                    pass
+            st.session_state.ms_email = email
             st.query_params.clear()
             st.rerun()
         else:
@@ -63,7 +81,7 @@ def ms_login():
         st.link_button(
             "Sign in with Microsoft",
             auth_url,
-            use_container_width=True,
+            width="stretch",
         )
     return False
 
