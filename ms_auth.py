@@ -70,7 +70,7 @@ def convert_docx_to_pdf_graph(docx_bytes: bytes, filename: str = "document.docx"
         return None
 
     headers = {"Authorization": f"Bearer {token}"}
-    base = "https://graph.microsoft.com/v1.0/me/drive"
+    base = _drive_base_url()
 
     try:
         # Upload to a temp folder in OneDrive
@@ -120,8 +120,9 @@ def save_to_onedrive(
         return None, "Not authenticated. Sign out and back in."
 
     headers = {"Authorization": f"Bearer {token}"}
+    base = _drive_base_url()
     safe_path = folder_path.replace("\\", "/")
-    upload_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{safe_path}/{filename}:/content"
+    upload_url = f"{base}/root:/{safe_path}/{filename}:/content"
 
     resp = requests.put(
         upload_url,
@@ -211,6 +212,59 @@ def create_onedrive_folder(path: str) -> bool:
 CANDIDATES_FOLDER = "Day to Day/Candidates"
 
 
+def _find_drive_id() -> str | None:
+    """Find the drive ID for the Infinitas Talent shared drive.
+
+    Searches user's available drives for one containing 'Day to Day'.
+    Falls back to personal drive if not found.
+    """
+    if "ms_drive_id" in st.session_state:
+        return st.session_state.ms_drive_id
+
+    token = st.session_state.get("ms_access_token")
+    if not token:
+        return None
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Try personal OneDrive first
+    resp = requests.get(
+        f"https://graph.microsoft.com/v1.0/me/drive/root:/{CANDIDATES_FOLDER}:/",
+        headers=headers, timeout=15,
+    )
+    if resp.status_code == 200:
+        drive_id = resp.json().get("parentReference", {}).get("driveId")
+        if drive_id:
+            st.session_state.ms_drive_id = drive_id
+            return drive_id
+
+    # Search across all drives the user has access to
+    resp = requests.get(
+        "https://graph.microsoft.com/v1.0/me/drives?$select=id,name",
+        headers=headers, timeout=15,
+    )
+    if resp.status_code == 200:
+        for drive in resp.json().get("value", []):
+            drive_id = drive["id"]
+            check = requests.get(
+                f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{CANDIDATES_FOLDER}:/",
+                headers=headers, timeout=15,
+            )
+            if check.status_code == 200:
+                st.session_state.ms_drive_id = drive_id
+                return drive_id
+
+    return None
+
+
+def _drive_base_url() -> str:
+    """Get the Graph API base URL for the correct drive."""
+    drive_id = _find_drive_id()
+    if drive_id:
+        return f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
+    return "https://graph.microsoft.com/v1.0/me/drive"
+
+
 def search_candidate_folder(candidate_name: str) -> list[str]:
     """Search for a candidate's folder in Day to Day/Candidates/.
 
@@ -221,11 +275,11 @@ def search_candidate_folder(candidate_name: str) -> list[str]:
         return []
 
     headers = {"Authorization": f"Bearer {token}"}
+    base = _drive_base_url()
 
-    # First try listing children of the Candidates folder and matching by name
     url = (
-        f"https://graph.microsoft.com/v1.0/me/drive/root:/{CANDIDATES_FOLDER}:/children"
-        f"?$filter=folder ne null&$select=name&$top=200"
+        f"{base}/root:/{CANDIDATES_FOLDER}:/children"
+        f"?$filter=folder ne null&$select=name,parentReference&$top=200"
     )
     resp = requests.get(url, headers=headers, timeout=15)
     if resp.status_code != 200:
