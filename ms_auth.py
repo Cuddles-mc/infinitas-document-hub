@@ -337,6 +337,60 @@ def search_candidate_folder(candidate_name: str) -> list[dict]:
     return matches
 
 
+def debug_drives() -> str:
+    """Diagnostic: list all drives and root folders."""
+    token = st.session_state.get("ms_access_token")
+    if not token:
+        return "Not authenticated."
+
+    headers = {"Authorization": f"Bearer {token}"}
+    output = []
+
+    # List drives
+    resp = requests.get(
+        "https://graph.microsoft.com/v1.0/me/drives?$select=id,name,driveType,webUrl",
+        headers=headers, timeout=15,
+    )
+    if resp.status_code == 200:
+        drives = resp.json().get("value", [])
+        output.append(f"=== DRIVES ({len(drives)}) ===")
+        for d in drives:
+            output.append(f"  {d.get('name')} | type={d.get('driveType')} | id={d.get('id')}")
+
+            # List root folders of each drive
+            children = requests.get(
+                f"https://graph.microsoft.com/v1.0/drives/{d['id']}/root/children?$filter=folder ne null&$select=name&$top=20",
+                headers=headers, timeout=15,
+            )
+            if children.status_code == 200:
+                folders = [item["name"] for item in children.json().get("value", [])]
+                output.append(f"    Root folders: {folders}")
+            else:
+                output.append(f"    Root folders: ERROR {children.status_code}")
+    else:
+        output.append(f"Drives list failed: {resp.status_code} {resp.text[:200]}")
+
+    # Also check /me/drive directly
+    resp2 = requests.get(
+        "https://graph.microsoft.com/v1.0/me/drive?$select=id,name,driveType,webUrl",
+        headers=headers, timeout=15,
+    )
+    if resp2.status_code == 200:
+        d = resp2.json()
+        output.append(f"\n=== ME/DRIVE ===")
+        output.append(f"  {d.get('name')} | type={d.get('driveType')} | id={d.get('id')}")
+
+        children = requests.get(
+            "https://graph.microsoft.com/v1.0/me/drive/root/children?$filter=folder ne null&$select=name&$top=20",
+            headers=headers, timeout=15,
+        )
+        if children.status_code == 200:
+            folders = [item["name"] for item in children.json().get("value", [])]
+            output.append(f"  Root folders: {folders}")
+
+    return "\n".join(output)
+
+
 def build_outlook_compose_url(
     to_email: str,
     subject: str,

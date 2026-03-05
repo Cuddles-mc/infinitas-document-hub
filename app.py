@@ -378,9 +378,12 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
                     st.warning(f"PDF conversion failed for {letter_type} letter.")
 
         # --- Step 1: Save Location (mandatory) ---
-        from ms_auth import search_candidate_folder, CANDIDATES_FOLDER
+        from ms_auth import search_candidate_folder, CANDIDATES_FOLDER, debug_drives
 
         st.subheader("1. Save Location")
+        with st.expander("Debug: OneDrive info"):
+            if st.button("Show drives & folders", key="debug_drives"):
+                st.code(debug_drives())
 
         # Search for existing candidate folder in Day to Day/Candidates/
         if f"folder_results_{candidate}" not in st.session_state:
