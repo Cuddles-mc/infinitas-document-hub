@@ -497,25 +497,26 @@ elif DOCUMENT_TYPES.get(selected) == "placement_letters":
             if not save_folder.strip():
                 st.error("Save folder is required.")
             else:
-                results = []
-
                 with st.spinner("Saving files to OneDrive..."):
                     saved_count = 0
+                    errors = []
                     for fname, fbytes in all_files.items():
-                        url = save_to_onedrive(fbytes, fname, save_folder)
+                        url, err = save_to_onedrive(fbytes, fname, save_folder)
                         if url:
                             saved_count += 1
+                        elif err:
+                            errors.append(f"{fname}: {err}")
                     if saved_count:
-                        results.append(f"Saved {saved_count} file(s) to {save_folder}")
-                    else:
-                        st.error("Failed to save to OneDrive. You may need to sign out and back in.")
+                        st.success(f"Saved {saved_count} file(s) to {save_folder}")
+                    if errors:
+                        for e in errors:
+                            st.error(e)
 
-                if results:
-                    st.success("Done: " + " | ".join(results))
-
-                # Build Outlook compose links
+                # Always show Outlook compose links
+                st.divider()
                 st.markdown("**Open in Outlook — your signature is included automatically.**")
-                st.caption(f"Attach PDFs from OneDrive: **{save_folder}**")
+                if saved_count:
+                    st.caption(f"Attach PDFs from OneDrive: **{save_folder}**")
 
                 email_btns = st.columns(2)
                 if client_email:

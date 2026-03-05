@@ -109,20 +109,15 @@ def save_to_onedrive(
     file_bytes: bytes,
     filename: str,
     folder_path: str,
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """Save a file to OneDrive under the given folder path.
 
-    Args:
-        file_bytes: The file content.
-        filename: Name for the file.
-        folder_path: OneDrive folder path (e.g. "Placements/John Smith").
-
     Returns:
-        The web URL of the saved file, or None on failure.
+        Tuple of (web_url, error_message). One will be None.
     """
     token = st.session_state.get("ms_access_token")
     if not token:
-        return None
+        return None, "Not authenticated. Sign out and back in."
 
     headers = {"Authorization": f"Bearer {token}"}
     safe_path = folder_path.replace("\\", "/")
@@ -135,8 +130,15 @@ def save_to_onedrive(
         timeout=30,
     )
     if resp.status_code in (200, 201):
-        return resp.json().get("webUrl")
-    return None
+        return resp.json().get("webUrl"), None
+
+    # Parse error
+    try:
+        err = resp.json().get("error", {})
+        msg = f"{resp.status_code}: {err.get('code', '')} — {err.get('message', resp.text[:200])}"
+    except Exception:
+        msg = f"{resp.status_code}: {resp.text[:200]}"
+    return None, msg
 
 
 def list_onedrive_folders(path: str = "") -> list[dict] | None:
