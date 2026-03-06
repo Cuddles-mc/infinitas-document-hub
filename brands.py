@@ -72,9 +72,14 @@ BRANDS = {
 
 DEFAULT_BRAND = "infinitas.co.nz"
 
-# Aliases for domains with alternate spellings
+# Aliases for domains with alternate spellings or onmicrosoft.com tenant domains
 DOMAIN_ALIASES = {
     "orgintalent.co.nz": "origintalent.co.nz",
+    "origintalent.onmicrosoft.com": "origintalent.co.nz",
+    "orgintalent.onmicrosoft.com": "origintalent.co.nz",
+    "luminoustalent.onmicrosoft.com": "luminoustalent.co.nz",
+    "infinitas.onmicrosoft.com": "infinitas.co.nz",
+    "infinitastalent.onmicrosoft.com": "infinitas.co.nz",
 }
 
 

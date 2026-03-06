@@ -52,6 +52,15 @@ if st.sidebar.button("Sign out", width="stretch"):
         del st.session_state[key]
     st.rerun()
 
+# Temporary debug — remove once Origin branding is confirmed working
+if st.session_state.get("_debug_brand_email"):
+    with st.sidebar.expander("Brand debug"):
+        st.caption(f"**Email:** {st.session_state.get('_debug_brand_email', '?')}")
+        st.caption(f"**Brand:** {brand['short_name']}")
+        claims = st.session_state.get("_debug_brand_claims", {})
+        for k, v in claims.items():
+            st.caption(f"{k}: {v}")
+
 # --- Header ---
 st.title("Document Hub")
 

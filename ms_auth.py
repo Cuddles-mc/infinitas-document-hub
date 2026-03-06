@@ -47,18 +47,31 @@ def ms_login():
                 or claims.get("upn")
                 or ""
             )
-            # Fallback: fetch from Graph API /me
-            if not email:
-                try:
-                    me = requests.get(
-                        "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName",
-                        headers={"Authorization": f"Bearer {result['access_token']}"},
-                        timeout=10,
-                    ).json()
-                    email = me.get("mail") or me.get("userPrincipalName") or ""
-                except Exception:
-                    pass
+            # Guest users may have UPN like user_domain#EXT#@tenant.onmicrosoft.com
+            # Always fetch from Graph API /me for the real mail address
+            try:
+                me = requests.get(
+                    "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName,otherMails",
+                    headers={"Authorization": f"Bearer {result['access_token']}"},
+                    timeout=10,
+                ).json()
+                graph_email = me.get("mail") or ""
+                graph_upn = me.get("userPrincipalName") or ""
+                graph_other = (me.get("otherMails") or [None])[0] or ""
+                # Prefer Graph mail (actual mailbox) over token claims
+                # because guest users' claims may show the host tenant domain
+                if graph_email and "@" in graph_email:
+                    email = graph_email
+                elif not email or "#EXT#" in email or "onmicrosoft.com" in email:
+                    email = graph_email or graph_other or graph_upn or email
+            except Exception:
+                pass
             st.session_state.ms_email = email
+            # Temporary debug — remove once Origin branding is confirmed working
+            st.session_state._debug_brand_email = email
+            st.session_state._debug_brand_claims = {
+                k: claims.get(k) for k in ["preferred_username", "email", "upn"]
+            }
             st.query_params.clear()
             st.rerun()
         else:
