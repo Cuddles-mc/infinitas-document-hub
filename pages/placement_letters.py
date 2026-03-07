@@ -149,7 +149,7 @@ def _render_form():
 
 
 def _render_results():
-    from ms_auth import build_outlook_compose_url
+    from ms_auth import create_draft_with_attachments
 
     data = st.session_state.pl_data
     generated = st.session_state.pl_generated
@@ -172,6 +172,10 @@ def _render_results():
         "candidate": f"Placement Confirmation {candidate} at {company}",
     }
     all_files = build_files_dict(generated, name_map, fmt_docx, fmt_pdf)
+
+    # Split files by letter type for email attachments
+    client_files = {k: v for k, v in all_files.items() if "Confirmation for" in k}
+    candidate_files = {k: v for k, v in all_files.items() if "Confirmation for" not in k}
 
     # --- Download ---
     form_section("Download")
@@ -203,9 +207,9 @@ def _render_results():
             key="dl_all_zip",
         )
 
-    # --- Email ---
+    # --- Email (creates Outlook draft with attachment) ---
     form_section("Send via Outlook")
-    st.caption("Opens Outlook with pre-filled email. Attach the downloaded files manually.")
+    st.caption("Creates a draft email in Outlook with the letter attached. Review and hit Send.")
 
     email_cols = st.columns(2)
 
@@ -258,16 +262,61 @@ def _render_results():
         else:
             cand_email = ""
 
-    # Outlook compose links
+    # Create draft buttons
     email_btns = st.columns(2)
-    if client_email:
+    if "client" in generated:
         with email_btns[0]:
-            url = build_outlook_compose_url(client_email, client_subject, client_body)
-            st.link_button("Open Client Email in Outlook", url, use_container_width=True)
-    if cand_email:
+            if st.button(
+                "Create Client Draft in Outlook",
+                key="send_client",
+                type="primary",
+                use_container_width=True,
+                disabled=not client_email,
+            ):
+                with st.spinner("Creating draft..."):
+                    url = create_draft_with_attachments(
+                        client_email, client_subject, client_body, client_files,
+                    )
+                    if url:
+                        st.session_state["_client_draft_url"] = url
+                        st.rerun()
+                    else:
+                        st.error("Failed to create draft. Check your email permissions.")
+
+            if "_client_draft_url" in st.session_state:
+                st.link_button(
+                    "Open Client Draft in Outlook",
+                    st.session_state["_client_draft_url"],
+                    use_container_width=True,
+                )
+                st.success("Draft created with attachment.")
+
+    if "candidate" in generated:
         with email_btns[1]:
-            url = build_outlook_compose_url(cand_email, cand_subject, cand_body)
-            st.link_button("Open Candidate Email in Outlook", url, use_container_width=True)
+            if st.button(
+                "Create Candidate Draft in Outlook",
+                key="send_cand",
+                type="primary",
+                use_container_width=True,
+                disabled=not cand_email,
+            ):
+                with st.spinner("Creating draft..."):
+                    url = create_draft_with_attachments(
+                        cand_email, cand_subject, cand_body, candidate_files,
+                    )
+                    if url:
+                        st.session_state["_cand_draft_url"] = url
+                        st.rerun()
+                    else:
+                        st.error("Failed to create draft. Check your email permissions.")
+
+            if "_cand_draft_url" in st.session_state:
+                st.link_button(
+                    "Open Candidate Draft in Outlook",
+                    st.session_state["_cand_draft_url"],
+                    use_container_width=True,
+                )
+                st.success("Draft created with attachment.")
 
 
 def _parse_spreadsheet(uploaded_xlsx):
