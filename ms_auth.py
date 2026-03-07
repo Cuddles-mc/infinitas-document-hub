@@ -58,8 +58,6 @@ def ms_login():
                 graph_email = me.get("mail") or ""
                 graph_upn = me.get("userPrincipalName") or ""
                 graph_other = (me.get("otherMails") or [None])[0] or ""
-                # Prefer Graph mail (actual mailbox) over token claims
-                # because guest users' claims may show the host tenant domain
                 if graph_email and "@" in graph_email:
                     email = graph_email
                 elif not email or "#EXT#" in email or "onmicrosoft.com" in email:
@@ -67,11 +65,6 @@ def ms_login():
             except Exception:
                 pass
             st.session_state.ms_email = email
-            # Temporary debug — remove once Origin branding is confirmed working
-            st.session_state._debug_brand_email = email
-            st.session_state._debug_brand_claims = {
-                k: claims.get(k) for k in ["preferred_username", "email", "upn"]
-            }
             st.query_params.clear()
             st.rerun()
         else:
@@ -79,23 +72,38 @@ def ms_login():
             st.error(f"Login failed: {error}")
             return False
 
-    # Show login page
+    # --- Login page ---
     auth_url = app.get_authorization_request_url(
         scopes=SCOPES,
         redirect_uri=st.secrets["MS_REDIRECT_URI"],
     )
 
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        st.markdown("###")
-        st.title("Document Hub")
-        st.caption("Branded document generation for the team")
-        st.markdown("###")
-        st.link_button(
-            "Sign in with Microsoft",
-            auth_url,
-            width="stretch",
-        )
+        st.markdown("")
+        st.markdown("")
+        with st.container(border=True):
+            st.markdown(
+                '<div style="text-align: center; padding: 1.5rem 0 0.5rem 0;">',
+                unsafe_allow_html=True,
+            )
+            st.image(
+                "https://infinitas.co.nz/wp-content/uploads/2024/11/Infinitas-Logo-HRZ-2.svg",
+                use_container_width=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("")
+            st.markdown(
+                '<p style="text-align: center; color: #6B7280; font-size: 1rem; '
+                'margin-bottom: 1.5rem;">Document Hub</p>',
+                unsafe_allow_html=True,
+            )
+            st.link_button(
+                "Sign in with Microsoft",
+                auth_url,
+                use_container_width=True,
+            )
+            st.markdown("")
     return False
 
 

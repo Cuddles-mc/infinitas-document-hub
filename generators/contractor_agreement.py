@@ -16,21 +16,73 @@ TEMPLATES = {
 
 
 def _replace_in_para(para, old: str, new: str):
-    """Replace text in a paragraph, preserving first run formatting."""
-    if old in para.text:
-        for run in para.runs:
-            if old in run.text:
-                run.text = run.text.replace(old, new)
-                return True
-        # Fallback: text spans multiple runs — rebuild
-        full = para.text
-        if old in full:
-            new_text = full.replace(old, new)
-            for run in para.runs[1:]:
-                run.text = ""
-            para.runs[0].text = new_text
+    """Replace text in a paragraph, preserving formatting as much as possible.
+
+    Strategy:
+    1. Try run-by-run replacement (best: preserves all formatting)
+    2. If text spans runs, find the spanning range, clear middle runs,
+       and update first/last runs to contain the replacement.
+    """
+    if old not in para.text:
+        return False
+
+    # Strategy 1: text is entirely within one run
+    for run in para.runs:
+        if old in run.text:
+            run.text = run.text.replace(old, new)
             return True
-    return False
+
+    # Strategy 2: text spans multiple runs
+    full_text = ""
+    run_ranges = []  # [(start_char, end_char, run_idx)]
+    for idx, run in enumerate(para.runs):
+        start = len(full_text)
+        full_text += run.text
+        run_ranges.append((start, len(full_text), idx))
+
+    match_start = full_text.find(old)
+    if match_start == -1:
+        return False
+    match_end = match_start + len(old)
+
+    # Find which runs the match starts and ends in
+    first_run_idx = None
+    last_run_idx = None
+    for start, end, idx in run_ranges:
+        if start <= match_start < end:
+            first_run_idx = idx
+        if start < match_end <= end:
+            last_run_idx = idx
+
+    if first_run_idx is None or last_run_idx is None:
+        # Fallback: rebuild from paragraph text (loses formatting)
+        new_text = full_text.replace(old, new)
+        for run in para.runs[1:]:
+            run.text = ""
+        para.runs[0].text = new_text
+        return True
+
+    # Reconstruct: prefix + replacement in first run,
+    # suffix in last run, clear middle runs
+    first_start = run_ranges[first_run_idx][0]
+    last_end = run_ranges[last_run_idx][1]
+
+    prefix = full_text[first_start:match_start]
+    suffix = full_text[match_end:last_end]
+
+    first_run = para.runs[first_run_idx]
+    last_run = para.runs[last_run_idx]
+
+    if first_run_idx == last_run_idx:
+        first_run.text = prefix + new + suffix
+    else:
+        first_run.text = prefix + new
+        last_run.text = suffix
+        # Clear middle runs
+        for i in range(first_run_idx + 1, last_run_idx):
+            para.runs[i].text = ""
+
+    return True
 
 
 def _fill_sole_trader(doc: Document, data: dict):

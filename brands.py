@@ -93,38 +93,80 @@ def get_brand(email: str) -> dict:
 
 
 def get_brand_css(brand: dict) -> str:
-    """Generate CSS that themes the entire Streamlit app to a brand."""
+    """Generate CSS that themes the entire Streamlit app to a brand.
+
+    Modern, polished styling inspired by PandaDoc/Proposify.
+    """
     c = brand["colors"]
     return f"""<style>
-    /* --- Sidebar --- */
+    /* ===== GLOBAL POLISH ===== */
+    .main .block-container {{
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 1100px;
+    }}
+
+    /* ===== SIDEBAR ===== */
     section[data-testid="stSidebar"] {{
         background-color: {c['sidebar_bg']};
+        border-right: none !important;
+        box-shadow: 2px 0 12px rgba(0,0,0,0.08);
     }}
     section[data-testid="stSidebar"] * {{
         color: {c['sidebar_text']} !important;
     }}
     section[data-testid="stSidebar"] hr {{
-        border-color: rgba(255,255,255,0.2) !important;
+        border-color: rgba(255,255,255,0.15) !important;
+    }}
+    /* Sidebar radio items */
+    section[data-testid="stSidebar"] .stRadio label {{
+        padding: 0.4rem 0.75rem !important;
+        border-radius: 6px !important;
+        transition: background 0.15s ease !important;
+    }}
+    section[data-testid="stSidebar"] .stRadio label:hover {{
+        background: rgba(255,255,255,0.08) !important;
     }}
     section[data-testid="stSidebar"] .stButton > button {{
         background-color: transparent;
-        border: 1px solid rgba(255,255,255,0.3);
+        border: 1px solid rgba(255,255,255,0.25);
         color: {c['sidebar_text']} !important;
+        border-radius: 8px !important;
+        transition: all 0.15s ease !important;
     }}
     section[data-testid="stSidebar"] .stButton > button:hover {{
         background-color: rgba(255,255,255,0.1);
-        border-color: rgba(255,255,255,0.5);
+        border-color: rgba(255,255,255,0.4);
     }}
 
-    /* --- Headers --- */
+    /* ===== TYPOGRAPHY ===== */
     .main h1 {{
         color: {c['dark']} !important;
+        font-weight: 700 !important;
     }}
     .main h2, .main h3 {{
         color: {c['primary']} !important;
+        font-weight: 600 !important;
     }}
 
-    /* --- Primary buttons --- */
+    /* ===== CARDS (st.container with border) ===== */
+    .main [data-testid="stVerticalBlockBorderWrapper"] {{
+        border-radius: 12px !important;
+        border-color: #E5E7EB !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }}
+    .main [data-testid="stVerticalBlockBorderWrapper"]:hover {{
+        border-color: {c['primary']} !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }}
+
+    /* ===== BUTTONS ===== */
+    .main .stButton > button {{
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        transition: all 0.15s ease !important;
+        letter-spacing: 0.01em;
+    }}
     .main .stButton > button[kind="primary"],
     .main .stButton > button[data-testid="stBaseButton-primary"] {{
         background-color: {c['primary']};
@@ -135,16 +177,23 @@ def get_brand_css(brand: dict) -> str:
     .main .stButton > button[data-testid="stBaseButton-primary"]:hover {{
         background-color: {c['button_hover']};
         border-color: {c['button_hover']};
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     }}
 
-    /* --- Download buttons --- */
+    /* ===== DOWNLOAD BUTTONS ===== */
     .main .stDownloadButton > button {{
+        border-radius: 8px !important;
         border-color: {c['primary']} !important;
         color: {c['primary']} !important;
+        font-weight: 500 !important;
+        transition: all 0.15s ease !important;
     }}
     .main .stDownloadButton > button:hover {{
         background-color: {c['primary']} !important;
         color: white !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     }}
     .main .stDownloadButton > button[kind="primary"],
     .main .stDownloadButton > button[data-testid="stBaseButton-primary"] {{
@@ -152,34 +201,79 @@ def get_brand_css(brand: dict) -> str:
         color: white !important;
     }}
 
-    /* --- Links --- */
+    /* ===== INPUTS ===== */
+    .main .stTextInput > div > div > input,
+    .main .stTextArea > div > div > textarea {{
+        border-radius: 8px !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    }}
+    .main .stTextInput > div > div > input:focus,
+    .main .stTextArea > div > div > textarea:focus {{
+        border-color: {c['primary']} !important;
+        box-shadow: 0 0 0 2px {c['primary']}22 !important;
+    }}
+    .main .stSelectbox > div > div {{
+        border-radius: 8px !important;
+    }}
+
+    /* ===== CHECKBOXES ===== */
+    .main .stCheckbox label span[data-testid="stCheckboxLabel"] {{
+        font-weight: 400;
+    }}
+
+    /* ===== EXPANDERS ===== */
+    .main .streamlit-expanderHeader {{
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+    }}
+
+    /* ===== LINKS ===== */
     .main a {{
         color: {c['primary']} !important;
     }}
 
-    /* --- Dividers --- */
-    .main hr {{
-        border-color: {c['accent']} !important;
-        opacity: 0.4;
-    }}
-
-    /* --- Link buttons (Outlook compose) --- */
+    /* ===== LINK BUTTONS (Outlook compose) ===== */
     .main .stLinkButton > a {{
         background-color: {c['primary']} !important;
         color: white !important;
         border-color: {c['primary']} !important;
+        border-radius: 8px !important;
+        transition: all 0.15s ease !important;
     }}
     .main .stLinkButton > a:hover {{
         background-color: {c['button_hover']} !important;
         border-color: {c['button_hover']} !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     }}
 
-    /* --- Tabs --- */
+    /* ===== DIVIDERS ===== */
+    .main hr {{
+        border-color: #E5E7EB !important;
+        opacity: 0.6;
+        margin: 1.5rem 0 !important;
+    }}
+
+    /* ===== TABS ===== */
     .stTabs [data-baseweb="tab"] {{
         color: {c['text']} !important;
+        font-weight: 500;
     }}
     .stTabs [aria-selected="true"] {{
         color: {c['primary']} !important;
         border-bottom-color: {c['primary']} !important;
+    }}
+
+    /* ===== INFO/WARNING/ERROR BOXES ===== */
+    .main .stAlert {{
+        border-radius: 8px !important;
+    }}
+
+    /* ===== FILE UPLOADER ===== */
+    .main .stFileUploader {{
+        border-radius: 8px !important;
+    }}
+    .main [data-testid="stFileUploaderDropzone"] {{
+        border-radius: 8px !important;
     }}
 </style>"""

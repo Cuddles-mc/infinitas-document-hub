@@ -6,11 +6,11 @@ returns branded .docx bytes with only the relevant clauses.
 
 import io
 import re
-from copy import deepcopy
 from pathlib import Path
 from docx import Document
-from docx.shared import Pt, RGBColor
-from docx.oxml.ns import qn
+from docx.shared import Pt
+from docx.oxml.ns import qn, nsdecls
+from docx.oxml import parse_xml
 
 
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "terms-conditions.docx"
@@ -53,13 +53,12 @@ GUARANTEE_TEXT = {
     12: "twelve (12) calendar months",
 }
 
+FONT_NAME = "Aptos"
+FONT_SIZE = Pt(10)
+
 
 def _find_heading_ranges(doc):
-    """Map each Heading 1 paragraph to its clause number and index range.
-
-    Returns list of (clause_num, start_idx, end_idx) where end_idx is
-    exclusive (the index of the next Heading 1 or end of document).
-    """
+    """Map each Heading 1 paragraph to its clause number and index range."""
     ranges = []
     heading_indices = []
 
@@ -82,7 +81,7 @@ def _find_heading_ranges(doc):
 
 
 def _remove_paragraphs(doc, indices_to_remove: set):
-    """Remove paragraphs by index (sets text to empty, removes from XML)."""
+    """Remove paragraphs by index from the document XML."""
     body = doc.element.body
     to_remove = []
     for i, para in enumerate(doc.paragraphs):
@@ -149,27 +148,64 @@ def _fill_client_name(doc, client_name: str):
                 return
 
 
+def _set_run_font(run):
+    """Apply consistent font formatting to a run."""
+    run.font.name = FONT_NAME
+    run.font.size = FONT_SIZE
+    rPr = run._element.get_or_add_rPr()
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = parse_xml(f'<w:rFonts {nsdecls("w")}/>')
+        rPr.insert(0, rFonts)
+    rFonts.set(qn("w:ascii"), FONT_NAME)
+    rFonts.set(qn("w:hAnsi"), FONT_NAME)
+    rFonts.set(qn("w:cs"), FONT_NAME)
+    rFonts.set(qn("w:eastAsia"), FONT_NAME)
+
+
 def _rewrite_schedule_1(doc, data: dict):
-    """Rewrite the Schedule 1 fee text based on enabled service types."""
-    # Find Schedule 1 heading
-    sched_start = None
-    for i, para in enumerate(doc.paragraphs):
+    """Rewrite the Schedule 1 fee text based on enabled service types.
+
+    Removes all content after the Schedule 1 heading from the XML,
+    then appends fresh, properly-formatted paragraphs.
+    """
+    # Find Schedule 1 heading element
+    sched_element = None
+    for para in doc.paragraphs:
         if para.style and para.style.name == "Heading 1" and "SCHEDULE" in para.text.upper():
-            sched_start = i
+            sched_element = para._element
             break
 
-    if sched_start is None:
+    if sched_element is None:
         return
 
-    # Clear all paragraphs after the heading
-    for i in range(sched_start + 1, len(doc.paragraphs)):
-        para = doc.paragraphs[i]
-        for run in para.runs[1:]:
-            run.text = ""
-        if para.runs:
-            para.runs[0].text = ""
+    # Remove all sibling elements after the schedule heading
+    body = doc.element.body
+    to_remove = []
+    found = False
+    for child in body:
+        if child is sched_element:
+            found = True
+            continue
+        if found:
+            to_remove.append(child)
+    for elem in to_remove:
+        body.remove(elem)
 
-    # Build new schedule text
+    # Build fee entry text blocks
+    entries = _build_schedule_entries(data)
+
+    # Append fresh paragraphs with proper formatting
+    for text in entries:
+        para = doc.add_paragraph()
+        run = para.add_run(text)
+        _set_run_font(run)
+        para.paragraph_format.space_after = Pt(8)
+        para.paragraph_format.space_before = Pt(4)
+
+
+def _build_schedule_entries(data: dict) -> list[str]:
+    """Build the list of fee text entries for Schedule 1."""
     entries = []
 
     if data.get("perm_enabled", True):
@@ -178,7 +214,7 @@ def _rewrite_schedule_1(doc, data: dict):
         structure = data.get("perm_structure", "retained")
         guarantee = data.get("guarantee_months", 3)
 
-        if data.get("perm_structure") == "fixed_fee":
+        if structure == "fixed_fee":
             fee_text = f"Permanent Fees: A fixed fee of {data.get('perm_fixed_fee', 'TBC')}."
         else:
             fee_text = f"Permanent Fees: {pct}% based on the candidate\u2019s {basis}."
@@ -229,13 +265,13 @@ def _rewrite_schedule_1(doc, data: dict):
                 "shortlist and one third on placement."
             )
         exec_text += (
-            "\nExecutive Search Recruitment is defined as senior/executive leadership or "
+            "\n\nExecutive Search Recruitment is defined as senior/executive leadership or "
             "specialised positions where a customised advertising and/or search process is "
             "undertaken on an exclusive basis."
         )
         entries.append(exec_text)
 
-    # Contract buy-out (always included if contract or perm is on)
+    # Contract buy-out
     if data.get("contract_enabled", False) or data.get("perm_enabled", True):
         entries.append(
             "Contract Buy out: For temporary or contract candidates, who are offered "
@@ -244,25 +280,17 @@ def _rewrite_schedule_1(doc, data: dict):
             "on acceptance of the engagement or employment by the client."
         )
 
-    # GST note always
+    # GST note
     entries.append(
         "All Fees quoted exclude \u201cGST\u201d Goods and Services Tax. GST will be "
         "added to final invoices sent out by Infinitas Talent."
     )
 
-    # Write entries into the available paragraphs after schedule heading
-    for idx, text in enumerate(entries):
-        para_idx = sched_start + 1 + (idx * 2)  # every other para (blank between)
-        if para_idx < len(doc.paragraphs):
-            para = doc.paragraphs[para_idx]
-            if para.runs:
-                para.runs[0].text = text
-            else:
-                para.text = text
+    return entries
 
 
 def _add_signature_block(doc, include_infinitas: bool, include_client: bool, adobe_sign: bool):
-    """Append signature block table at the end of the document."""
+    """Append a styled signature block table at the end of the document."""
     if not include_infinitas and not include_client:
         return
 
@@ -275,6 +303,24 @@ def _add_signature_block(doc, include_infinitas: bool, include_client: bool, ado
         rows_needed += 1
 
     table = doc.add_table(rows=rows_needed * 2, cols=3)
+
+    # Style the table with blue top/bottom borders
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = parse_xml(f'<w:tblPr {nsdecls("w")}/>')
+        tbl.insert(0, tblPr)
+    existing = tblPr.find(qn("w:tblBorders"))
+    if existing is not None:
+        tblPr.remove(existing)
+    tblBorders = parse_xml(
+        f'<w:tblBorders {nsdecls("w")}>'
+        f'  <w:top w:val="single" w:sz="6" w:space="0" w:color="004899"/>'
+        f'  <w:bottom w:val="single" w:sz="6" w:space="0" w:color="004899"/>'
+        f'  <w:insideH w:val="single" w:sz="4" w:space="0" w:color="E5E7EB"/>'
+        f'</w:tblBorders>'
+    )
+    tblPr.append(tblBorders)
 
     row_idx = 0
     if include_infinitas:
@@ -295,30 +341,18 @@ def _add_signature_block(doc, include_infinitas: bool, include_client: bool, ado
         label_cells = table.rows[row_idx + 1].cells
         label_cells[0].text = "Signed for and on behalf of the Client"
 
+    # Apply font formatting to all cells
+    for row in table.rows:
+        for cell in row.cells:
+            for para in cell.paragraphs:
+                para.paragraph_format.space_before = Pt(4)
+                para.paragraph_format.space_after = Pt(4)
+                for run in para.runs:
+                    _set_run_font(run)
+
 
 def generate_docx(data: dict) -> bytes:
-    """Generate T&Cs .docx from form data.
-
-    data keys:
-        client_name: str
-        date: str
-        perm_enabled: bool (default True)
-        contract_enabled: bool
-        exec_enabled: bool
-        perm_fee_pct: int
-        perm_basis: str ("base salary" or "total salary package")
-        perm_structure: str ("retained", "contingent", "fixed_fee")
-        perm_fixed_fee: str (if structure is fixed_fee)
-        contract_margin_pct: int
-        exec_fee_pct: int
-        exec_basis: str
-        exec_structure: str
-        exec_fixed_fee: str
-        guarantee_months: int (3, 6, or 12)
-        sig_infinitas: bool
-        sig_client: bool
-        adobe_sign: bool
-    """
+    """Generate T&Cs .docx from form data."""
     doc = Document(str(TEMPLATE_PATH))
 
     # 1. Fill client name
@@ -336,7 +370,7 @@ def generate_docx(data: dict) -> bytes:
     if not data.get("exec_enabled", False):
         clauses_to_remove.update(REMOVABLE["exec"])
 
-    # 4. Find heading ranges and collect paragraph indices to remove
+    # 4. Remove clause paragraphs
     if clauses_to_remove:
         ranges = _find_heading_ranges(doc)
         indices_to_remove = set()
@@ -344,8 +378,6 @@ def generate_docx(data: dict) -> bytes:
             if clause_num in clauses_to_remove:
                 for i in range(start, end):
                     indices_to_remove.add(i)
-
-        # Remove paragraphs (must do before re-numbering)
         _remove_paragraphs(doc, indices_to_remove)
 
     # 5. Re-number clauses and update cross-references
