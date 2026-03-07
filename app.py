@@ -1,7 +1,7 @@
 """Document Hub — branded document generator for the team.
 
 Thin router: handles auth, brand detection, sidebar navigation,
-and dispatches to page modules in pages/.
+and dispatches to page modules in views/.
 """
 
 import streamlit as st
@@ -91,23 +91,23 @@ if st.sidebar.button("Sign out", use_container_width=True):
 page = st.session_state.current_page
 
 if page == "home":
-    from pages.home import render
+    from views.home import render
     render(navigate)
 
 elif page == "reference_check":
-    from pages.reference_check import render
+    from views.reference_check import render
     render()
 
 elif page == "placement_letters":
-    from pages.placement_letters import render
+    from views.placement_letters import render
     render()
 
 elif page == "terms_conditions":
-    from pages.terms_conditions import render
+    from views.terms_conditions import render
     render(user_email)
 
 elif page == "contractor_agreement":
-    from pages.contractor_agreement import render
+    from views.contractor_agreement import render
     render(user_email)
 
 else:

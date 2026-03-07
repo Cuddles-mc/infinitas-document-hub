@@ -106,8 +106,16 @@ def _render_form(user_email: str):
     form_section("Output")
     fmt1, fmt2 = st.columns(2)
     with fmt1:
+        st.markdown("**Format**")
         ca_fmt_docx = st.checkbox(".docx", value=True, key="ca_fmt_docx")
         ca_fmt_pdf = st.checkbox(".pdf", key="ca_fmt_pdf")
+    with fmt2:
+        st.markdown("**E-Signature**")
+        ca_docusign = st.checkbox(
+            "Add DocuSign fields",
+            key="ca_docusign",
+            help="Embeds invisible text tags so DocuSign can auto-detect signature, name, and date fields.",
+        )
 
     # Auto-save draft
     if ca_client and "ca_generated" not in st.session_state:
@@ -152,6 +160,7 @@ def _render_form(user_email: str):
                 "travel_expenses": st.session_state.get(
                     "ca_travel_expenses", "Upon authorisation by the Nominated Client",
                 ),
+                "docusign": st.session_state.get("ca_docusign", False),
             }
             if is_ltd:
                 gen_data.update({

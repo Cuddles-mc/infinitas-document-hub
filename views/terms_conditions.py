@@ -142,6 +142,10 @@ def _render_form(user_email: str):
         if st.session_state.get("tc_exec_structure") == "Fixed Fee":
             st.text_input("Fixed fee amount ", key="tc_exec_fixed_fee")
 
+    # --- Live Schedule 1 Preview ---
+    form_section("Schedule 1 Preview")
+    _render_schedule_preview(tc_perm, tc_contract, tc_exec)
+
     form_section("Signature Blocks")
     sig1, sig2 = st.columns(2)
     with sig1:
@@ -206,19 +210,66 @@ def _render_form(user_email: str):
                 docx_bytes = generate_tc(gen_data)
                 st.session_state["tc_generated"] = docx_bytes
                 st.session_state["tc_gen_data"] = gen_data
-                st.session_state["tc_fmt_docx"] = tc_fmt_docx
-                st.session_state["tc_fmt_pdf"] = tc_fmt_pdf
+                st.session_state["tc_out_docx"] = tc_fmt_docx
+                st.session_state["tc_out_pdf"] = tc_fmt_pdf
                 delete_draft(user_email, "terms_conditions")
                 st.rerun()
             except Exception as e:
                 st.error(f"Error generating document: {e}")
 
 
+def _render_schedule_preview(perm: bool, contract: bool, exec_: bool):
+    """Show a live preview of what Schedule 1 will say based on current settings."""
+    from generators.terms_conditions import _build_schedule_entries
+
+    structure_map = {
+        "Retained (thirds)": "retained",
+        "Contingent": "contingent",
+        "Fixed Fee": "fixed_fee",
+    }
+    preview_data = {
+        "perm_enabled": perm,
+        "contract_enabled": contract,
+        "exec_enabled": exec_,
+        "perm_fee_pct": st.session_state.get("tc_perm_fee_pct", 18),
+        "perm_basis": st.session_state.get("tc_perm_basis", "Total Salary Package").lower(),
+        "perm_structure": structure_map.get(
+            st.session_state.get("tc_perm_structure", "Retained (thirds)"), "retained",
+        ),
+        "perm_fixed_fee": st.session_state.get("tc_perm_fixed_fee", ""),
+        "contract_margin_pct": st.session_state.get("tc_contract_margin", 25),
+        "exec_fee_pct": st.session_state.get("tc_exec_fee_pct", 25),
+        "exec_basis": st.session_state.get("tc_exec_basis", "Total Salary Package").lower(),
+        "exec_structure": structure_map.get(
+            st.session_state.get("tc_exec_structure", "Retained (thirds)"), "retained",
+        ),
+        "exec_fixed_fee": st.session_state.get("tc_exec_fixed_fee", ""),
+        "guarantee_months": st.session_state.get("tc_guarantee", 3),
+    }
+
+    entries = _build_schedule_entries(preview_data)
+
+    if not entries:
+        st.info("Enable a service type above to see the Schedule 1 preview.")
+        return
+
+    with st.container(border=True):
+        st.markdown(
+            '<p style="color: #004899; font-weight: 600; margin-bottom: 0.5rem;">SCHEDULE 1</p>',
+            unsafe_allow_html=True,
+        )
+        for entry in entries:
+            st.markdown(
+                f'<p style="font-size: 0.85rem; color: #374151; margin-bottom: 0.75rem;">{entry}</p>',
+                unsafe_allow_html=True,
+            )
+
+
 def _render_download():
     gen_data = st.session_state["tc_gen_data"]
     docx_bytes = st.session_state["tc_generated"]
-    tc_fmt_docx = st.session_state.get("tc_fmt_docx", True)
-    tc_fmt_pdf = st.session_state.get("tc_fmt_pdf", False)
+    tc_fmt_docx = st.session_state.get("tc_out_docx", True)
+    tc_fmt_pdf = st.session_state.get("tc_out_pdf", False)
     fname_base = f"Infinitas Talent - Terms and Conditions - {gen_data['client_name']}"
 
     # Back button

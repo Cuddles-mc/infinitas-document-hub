@@ -6,7 +6,7 @@ import streamlit as st
 
 
 AUTHORITY = f"https://login.microsoftonline.com/{st.secrets['MS_TENANT_ID']}"
-SCOPES = ["Files.ReadWrite", "User.Read", "Mail.ReadWrite"]
+SCOPES = ["Files.ReadWrite", "User.Read"]
 
 
 def _get_msal_app():
@@ -162,84 +162,4 @@ def build_outlook_compose_url(to_email: str, subject: str, body: str) -> str:
     )
 
 
-def create_draft_with_attachments(
-    to_email: str,
-    subject: str,
-    body: str,
-    attachments: dict[str, bytes],
-) -> str | None:
-    """Create an Outlook draft email with file attachments via Graph API.
 
-    Args:
-        to_email: Recipient email address
-        subject: Email subject
-        body: Plain text email body
-        attachments: Dict of {filename: file_bytes}
-
-    Returns:
-        URL to open the draft in Outlook Web, or None on failure.
-    """
-    import base64
-
-    token = st.session_state.get("ms_access_token")
-    if not token:
-        return None
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        # 1. Create draft message
-        draft_payload = {
-            "subject": subject,
-            "body": {"contentType": "Text", "content": body},
-            "toRecipients": [
-                {"emailAddress": {"address": to_email}}
-            ] if to_email else [],
-        }
-
-        resp = requests.post(
-            "https://graph.microsoft.com/v1.0/me/messages",
-            headers=headers,
-            json=draft_payload,
-            timeout=15,
-        )
-        if resp.status_code not in (200, 201):
-            return None
-
-        message = resp.json()
-        message_id = message["id"]
-        web_link = message.get("webLink", "")
-
-        # 2. Add attachments
-        for filename, file_bytes in attachments.items():
-            b64_content = base64.b64encode(file_bytes).decode("utf-8")
-
-            if filename.endswith(".pdf"):
-                content_type = "application/pdf"
-            else:
-                content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-            attach_payload = {
-                "@odata.type": "#microsoft.graph.fileAttachment",
-                "name": filename,
-                "contentType": content_type,
-                "contentBytes": b64_content,
-            }
-
-            attach_resp = requests.post(
-                f"https://graph.microsoft.com/v1.0/me/messages/{message_id}/attachments",
-                headers=headers,
-                json=attach_payload,
-                timeout=15,
-            )
-            if attach_resp.status_code not in (200, 201):
-                # Draft was created but attachment failed — still return the link
-                pass
-
-        return web_link or None
-
-    except Exception:
-        return None

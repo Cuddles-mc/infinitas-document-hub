@@ -141,15 +141,15 @@ def _render_form():
                     generated["candidate"] = generate_candidate_letter(data)
                 st.session_state.pl_generated = generated
                 st.session_state.pl_data = data
-                st.session_state.pl_fmt_docx = pl_fmt_docx
-                st.session_state.pl_fmt_pdf = pl_fmt_pdf
+                st.session_state.pl_out_docx = pl_fmt_docx
+                st.session_state.pl_out_pdf = pl_fmt_pdf
                 st.rerun()
             except Exception as e:
                 st.error(f"Error generating letters: {e}")
 
 
 def _render_results():
-    from ms_auth import create_draft_with_attachments
+    from ms_auth import build_outlook_compose_url
 
     data = st.session_state.pl_data
     generated = st.session_state.pl_generated
@@ -157,8 +157,8 @@ def _render_results():
     company = data["client_company"]
     client_first = data["client_contact_name"].split()[0]
     cand_first = candidate.split()[0]
-    fmt_docx = st.session_state.get("pl_fmt_docx", True)
-    fmt_pdf = st.session_state.get("pl_fmt_pdf", False)
+    fmt_docx = st.session_state.get("pl_out_docx", True)
+    fmt_pdf = st.session_state.get("pl_out_pdf", False)
 
     # Back button
     if st.button("< Back to form"):
@@ -173,7 +173,7 @@ def _render_results():
     }
     all_files = build_files_dict(generated, name_map, fmt_docx, fmt_pdf)
 
-    # Split files by letter type for email attachments
+    # Split files by letter type
     client_files = {k: v for k, v in all_files.items() if "Confirmation for" in k}
     candidate_files = {k: v for k, v in all_files.items() if "Confirmation for" not in k}
 
@@ -207,116 +207,35 @@ def _render_results():
             key="dl_all_zip",
         )
 
-    # --- Email (creates Outlook draft with attachment) ---
-    form_section("Send via Outlook")
-    st.caption("Creates a draft email in Outlook with the letter attached. Review and hit Send.")
+    # --- Email ---
+    form_section("Email")
+    st.caption("Opens Outlook with to/subject/body pre-filled. Attach the downloaded letter to the email.")
 
     email_cols = st.columns(2)
-
-    with email_cols[0]:
-        if "client" in generated:
-            st.markdown("**Client Letter**")
+    if "client" in generated:
+        with email_cols[0]:
             client_email = st.text_input(
-                "To", key="email_client_addr",
+                "Client email", key="email_client_addr",
                 placeholder=f"{client_first.lower()}@company.co.nz",
             )
-            client_subject = st.text_input(
-                "Subject",
-                value=f"Placement Confirmation - {candidate}, {data['position']}",
-                key="email_client_subject",
-            )
-            client_body = st.text_area(
-                "Email body",
-                value=(
-                    f"Dear {client_first},\n\n"
-                    f"Please find attached the placement confirmation for "
-                    f"{candidate} as {data['position']} at {company}.\n\n"
-                    f"Kind regards"
-                ),
-                height=150,
-                key="email_client_body",
-            )
-        else:
-            client_email = ""
-
-    with email_cols[1]:
-        if "candidate" in generated:
-            st.markdown("**Candidate Letter**")
-            cand_email = st.text_input("To", key="email_cand_addr")
-            cand_subject = st.text_input(
-                "Subject",
-                value=f"Congratulations - {data['position']} at {company}",
-                key="email_cand_subject",
-            )
-            cand_body = st.text_area(
-                "Email body",
-                value=(
-                    f"Dear {cand_first},\n\n"
-                    f"Congratulations on your new role. Please find attached "
-                    f"your placement confirmation for {data['position']} at {company}.\n\n"
-                    f"Kind regards"
-                ),
-                height=150,
-                key="email_cand_body",
-            )
-        else:
-            cand_email = ""
-
-    # Create draft buttons
-    email_btns = st.columns(2)
-    if "client" in generated:
-        with email_btns[0]:
-            if st.button(
-                "Create Client Draft in Outlook",
-                key="send_client",
-                type="primary",
-                use_container_width=True,
-                disabled=not client_email,
-            ):
-                with st.spinner("Creating draft..."):
-                    url = create_draft_with_attachments(
-                        client_email, client_subject, client_body, client_files,
-                    )
-                    if url:
-                        st.session_state["_client_draft_url"] = url
-                        st.rerun()
-                    else:
-                        st.error("Failed to create draft. Check your email permissions.")
-
-            if "_client_draft_url" in st.session_state:
-                st.link_button(
-                    "Open Client Draft in Outlook",
-                    st.session_state["_client_draft_url"],
-                    use_container_width=True,
+            if client_email:
+                url = build_outlook_compose_url(
+                    client_email,
+                    f"Placement Confirmation - {candidate}, {data['position']}",
+                    f"Dear {client_first},\n\nPlease find attached the placement confirmation for {candidate} as {data['position']} at {company}.\n\nKind regards",
                 )
-                st.success("Draft created with attachment.")
+                st.link_button("Email Client Letter", url, type="primary", use_container_width=True)
 
     if "candidate" in generated:
-        with email_btns[1]:
-            if st.button(
-                "Create Candidate Draft in Outlook",
-                key="send_cand",
-                type="primary",
-                use_container_width=True,
-                disabled=not cand_email,
-            ):
-                with st.spinner("Creating draft..."):
-                    url = create_draft_with_attachments(
-                        cand_email, cand_subject, cand_body, candidate_files,
-                    )
-                    if url:
-                        st.session_state["_cand_draft_url"] = url
-                        st.rerun()
-                    else:
-                        st.error("Failed to create draft. Check your email permissions.")
-
-            if "_cand_draft_url" in st.session_state:
-                st.link_button(
-                    "Open Candidate Draft in Outlook",
-                    st.session_state["_cand_draft_url"],
-                    use_container_width=True,
+        with email_cols[1]:
+            cand_email = st.text_input("Candidate email", key="email_cand_addr")
+            if cand_email:
+                url = build_outlook_compose_url(
+                    cand_email,
+                    f"Congratulations - {data['position']} at {company}",
+                    f"Dear {cand_first},\n\nCongratulations on your new role. Please find attached your placement confirmation for {data['position']} at {company}.\n\nKind regards",
                 )
-                st.success("Draft created with attachment.")
+                st.link_button("Email Candidate Letter", url, type="primary", use_container_width=True)
 
 
 def _parse_spreadsheet(uploaded_xlsx):
