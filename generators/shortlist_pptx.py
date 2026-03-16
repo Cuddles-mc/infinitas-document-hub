@@ -1,8 +1,8 @@
 """Shortlist PPTX generator.
 
 Takes structured candidate data + client/role info, returns branded PPTX bytes.
-Uses the Infinitas shortlist template and produces a fully editable output
-(no locked table styles).
+Uses the Infinitas shortlist template. Keeps table styles intact for proper
+row backgrounds. Replaces candidate photos with uploads or a placeholder.
 """
 
 import io
@@ -13,9 +13,11 @@ from pathlib import Path
 from lxml import etree
 from pptx import Presentation
 from pptx.oxml.ns import qn
+from pptx.util import Emu
 
 
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "shortlist-template.pptx"
+PLACEHOLDER_PATH = Path(__file__).parent.parent / "assets" / "photo-placeholder.png"
 
 LOREM = (
     "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
@@ -149,14 +151,31 @@ def _set_detail_cell(cell, text: str):
             p_elem.append(r_elem)
 
 
+def _replace_picture(slide, old_shape, new_image_bytes: bytes):
+    """Replace a Picture shape's image with new bytes, keeping position and size."""
+    left = old_shape.left
+    top = old_shape.top
+    width = old_shape.width
+    height = old_shape.height
+
+    # Remove old picture
+    sp = old_shape._element
+    sp.getparent().remove(sp)
+
+    # Add new picture at same position
+    pic_stream = io.BytesIO(new_image_bytes)
+    slide.shapes.add_picture(pic_stream, left, top, width, height)
+
+
 def _clone_slide(prs: Presentation, slide_index: int) -> None:
     """Clone a slide and append it to the presentation."""
+    import copy
+
     template_slide = prs.slides[slide_index]
     slide_layout = template_slide.slide_layout
     new_slide = prs.slides.add_slide(slide_layout)
 
     # Copy all shapes from template to new slide
-    import copy
     for shape in template_slide.shapes:
         el = copy.deepcopy(shape.element)
         new_slide.shapes._spTree.append(el)
@@ -165,26 +184,6 @@ def _clone_slide(prs: Presentation, slide_index: int) -> None:
     for ph in list(new_slide.placeholders):
         sp = ph._element
         sp.getparent().remove(sp)
-
-
-def _strip_table_styles(prs: Presentation):
-    """Remove table styles so fonts are fully editable in PowerPoint."""
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if shape.has_table:
-                tbl = shape.table._tbl
-                for style_id in tbl.findall(qn("a:tblStyleId")):
-                    style_id.getparent().remove(style_id)
-                tblPr = tbl.find(qn("a:tblPr"))
-                if tblPr is not None:
-                    for style_id in tblPr.findall(qn("a:tableStyleId")):
-                        tblPr.remove(style_id)
-                    for attr in [
-                        "bandRow", "firstRow", "lastRow",
-                        "bandCol", "firstCol", "lastCol",
-                    ]:
-                        if attr in tblPr.attrib:
-                            del tblPr.attrib[attr]
 
 
 def generate_shortlist(
@@ -206,11 +205,15 @@ def generate_shortlist(
             - salary_expectation: str
             - notes: str (or empty for lorem ipsum)
             - use_lorem: bool
+            - photo: bytes or None (optional candidate photo)
 
     Returns:
         PPTX file as bytes.
     """
     prs = Presentation(str(TEMPLATE_PATH))
+
+    # Load placeholder photo
+    placeholder_bytes = PLACEHOLDER_PATH.read_bytes() if PLACEHOLDER_PATH.exists() else None
 
     # --- Cover slide (slide 0) ---
     slide0 = prs.slides[0]
@@ -233,12 +236,9 @@ def generate_shortlist(
                     run.text = "SHORTLIST" if i == 0 else ""
 
     # --- Ensure enough candidate slides ---
-    # Template has slides 1, 2, 3 as candidate slides.
-    # If we need more, clone slide 1. If fewer, we'll delete extras.
     template_candidate_count = len(prs.slides) - 1  # subtract cover
     needed = len(candidates)
 
-    # Clone slide 1 to create extra candidate slides if needed
     while template_candidate_count < needed:
         _clone_slide(prs, 1)
         template_candidate_count += 1
@@ -246,10 +246,12 @@ def generate_shortlist(
     # --- Fill each candidate slide ---
     for cand_idx, cand in enumerate(candidates):
         slide = prs.slides[cand_idx + 1]
-        shapes_to_remove = []
 
         # Filter career to only included rows
         career = [c for c in cand.get("career", []) if c.get("include", True)]
+
+        # Get candidate photo (uploaded bytes or placeholder)
+        photo_bytes = cand.get("photo") or placeholder_bytes
 
         for shape in slide.shapes:
             # Candidate name
@@ -316,22 +318,15 @@ def generate_shortlist(
                             p.runs[0].text = notes_text
                             done = True
 
-            # Remove candidate photo
-            elif shape.shape_type == 13:
-                shapes_to_remove.append(shape)
-
-        for shape in shapes_to_remove:
-            sp = shape._element
-            sp.getparent().remove(sp)
+            # Replace candidate photo with upload or placeholder
+            elif shape.shape_type == 13 and photo_bytes:
+                _replace_picture(slide, shape, photo_bytes)
 
     # --- Remove extra candidate slides ---
     while len(prs.slides) > needed + 1:
         rId = prs.slides._sldIdLst[-1].get(qn("r:id"))
         prs.part.drop_rel(rId)
         prs.slides._sldIdLst.remove(prs.slides._sldIdLst[-1])
-
-    # --- Strip table styles for full editability ---
-    _strip_table_styles(prs)
 
     # --- Save to bytes ---
     buf = io.BytesIO()

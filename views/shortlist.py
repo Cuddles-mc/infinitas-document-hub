@@ -312,6 +312,20 @@ def _render_candidate_editor(idx: int, cand: dict):
             placeholder="e.g. $250,000 - $280,000",
         )
 
+    # Photo
+    form_section("Candidate Photo")
+    photo_file = st.file_uploader(
+        "Upload photo (optional — placeholder used if empty)",
+        type=["png", "jpg", "jpeg"],
+        key=f"cand_photo_{idx}",
+    )
+    if photo_file:
+        cand["photo"] = photo_file.read()
+        st.image(cand["photo"], width=150)
+    else:
+        cand["photo"] = None
+        st.caption("No photo uploaded — placeholder will be used. You can swap it in PowerPoint later.")
+
     # Notes
     form_section("Consultant Notes")
     cand["use_lorem"] = st.checkbox(
