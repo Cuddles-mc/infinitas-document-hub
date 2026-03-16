@@ -59,6 +59,31 @@ def _render_upload():
     with col2:
         role_title = st.text_input("Role title *", key="sl_role_title_input")
 
+    form_section("Template")
+    template_choice = st.radio(
+        "Choose template",
+        ["Standard (one page, portrait)", "Executive (two page, landscape)"],
+        key="sl_template_choice",
+        horizontal=True,
+        help="Standard works for most roles. Executive gives more space for detailed notes on senior appointments.",
+    )
+
+    if template_choice.startswith("Executive"):
+        col_prep, col_date = st.columns(2)
+        with col_prep:
+            prepared_by = st.text_input(
+                "Prepared by",
+                value=st.session_state.get("ms_user", ""),
+                key="sl_prepared_by_input",
+            )
+        with col_date:
+            from datetime import datetime
+            prepared_date = st.text_input(
+                "Date",
+                value=datetime.now().strftime("%B %Y"),
+                key="sl_prepared_date_input",
+            )
+
     form_section("Upload CVs")
     uploaded_files = st.file_uploader(
         "Upload candidate CVs (PDF or DOCX)",
@@ -128,6 +153,10 @@ def _render_upload():
             st.session_state.sl_candidates = candidates
             st.session_state.sl_client_name = client_name
             st.session_state.sl_role_title = role_title
+            st.session_state.sl_template = "executive" if template_choice.startswith("Executive") else "standard"
+            if template_choice.startswith("Executive"):
+                st.session_state.sl_prepared_by = prepared_by
+                st.session_state.sl_prepared_date = prepared_date
             st.rerun()
         else:
             st.error("No candidates could be extracted.")
@@ -191,7 +220,8 @@ def _render_review():
 
     client_name = st.session_state.sl_client_name
     role_title = st.session_state.sl_role_title
-    st.info(f"**{role_title}** at **{client_name}** — {len(st.session_state.sl_candidates)} candidate(s)")
+    template_label = "Executive (landscape)" if st.session_state.get("sl_template") == "executive" else "Standard"
+    st.info(f"**{role_title}** at **{client_name}** — {len(st.session_state.sl_candidates)} candidate(s) — {template_label}")
 
     candidates = st.session_state.sl_candidates
 
@@ -233,12 +263,23 @@ def _render_review():
 
         with st.spinner("Generating shortlist PPTX..."):
             try:
-                from generators.shortlist_pptx import generate_shortlist
-                pptx_bytes = generate_shortlist(
-                    client_name=client_name,
-                    role_title=role_title,
-                    candidates=valid_candidates,
-                )
+                use_executive = st.session_state.get("sl_template") == "executive"
+                if use_executive:
+                    from generators.shortlist_executive_pptx import generate_executive_shortlist
+                    pptx_bytes = generate_executive_shortlist(
+                        client_name=client_name,
+                        role_title=role_title,
+                        candidates=valid_candidates,
+                        prepared_by=st.session_state.get("sl_prepared_by", ""),
+                        prepared_date=st.session_state.get("sl_prepared_date", ""),
+                    )
+                else:
+                    from generators.shortlist_pptx import generate_shortlist
+                    pptx_bytes = generate_shortlist(
+                        client_name=client_name,
+                        role_title=role_title,
+                        candidates=valid_candidates,
+                    )
                 filename = f"{role_title} Shortlist prepared for {client_name} by Infinitas.pptx"
                 st.session_state.sl_pptx_bytes = pptx_bytes
                 st.session_state.sl_pptx_filename = filename
