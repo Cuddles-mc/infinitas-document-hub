@@ -20,6 +20,11 @@ Return ONLY valid JSON with this exact structure:
 Rules:
 - List career entries in reverse chronological order (most recent first)
 - Use exact job titles from the CV — do not summarise or abbreviate
+- Company names should be SHORT and SIMPLE:
+  - Use the common trading name, not the full legal entity (e.g. "Fletcher Building" not "Fletcher Building Industries Limited")
+  - For NZ companies: just the company name (e.g. "Spark New Zealand", "ANZ")
+  - For overseas companies: "Company Name (Country)" (e.g. "Vodafone Qatar", "DS Smith (UK)", "Airmech (Dubai)")
+  - Drop suffixes like Ltd, Limited, Pty, Inc, Group unless they are part of the well-known brand name
 - Use "MMM YYYY" format for dates (e.g. "Jan 2020", "Mar 2024")
 - Use "Present" for current roles
 - If only a year is shown, use "Jan YYYY" for start dates

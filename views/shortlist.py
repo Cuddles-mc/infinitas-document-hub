@@ -293,6 +293,11 @@ def _render_candidate_editor(idx: int, cand: dict):
         label_visibility="collapsed",
         placeholder="e.g. Bachelor of Commerce (Finance), University of Auckland\nChartered Accountant (CA), CAANZ",
     )
+    cand["hide_prof_quals"] = st.checkbox(
+        "Remove Professional Qualifications row (not applicable)",
+        value=cand.get("hide_prof_quals", False),
+        key=f"cand_hide_quals_{idx}",
+    )
 
     # Details
     form_section("Details")

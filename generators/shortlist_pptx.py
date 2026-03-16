@@ -294,15 +294,22 @@ def generate_shortlist(
             # Details table
             elif shape.name == "Table 2":
                 table = shape.table
+                tbl_detail = table._tbl
                 edu_qual = cand.get("education_qualifications", "")
+                hide_quals = cand.get("hide_prof_quals", False)
+
                 detail_data = [
                     cand.get("notice_period", "") or "Not disclosed",
                     cand.get("salary_expectation", "") or "Not disclosed",
                     edu_qual,
-                    "",  # Row 3 left empty — education_qualifications covers both
+                    "",  # Row 3 — removed below if hide_prof_quals
                 ]
                 for row_i in range(min(4, len(table.rows))):
                     _set_detail_cell(table.cell(row_i, 1), detail_data[row_i])
+
+                # Remove Professional Qualifications row if flagged
+                if hide_quals and len(tbl_detail.tr_lst) >= 4:
+                    tbl_detail.remove(tbl_detail.tr_lst[3])
 
             # Notes
             elif shape.name == "Rectangle: Rounded Corners 8":
