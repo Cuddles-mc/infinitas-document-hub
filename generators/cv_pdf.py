@@ -10,13 +10,9 @@ import re
 from pathlib import Path
 
 import fitz  # pymupdf
-from fpdf import FPDF
 
 
-FONT_NAME = "Helvetica"
-DARK = (14, 40, 65)
-GREY = (55, 65, 81)
-LIGHT_GREY = (111, 111, 111)
+COVER_DOCX_PATH = Path(__file__).parent.parent / "templates" / "cv-cover-template.docx"
 
 # Regex patterns for PII
 EMAIL_RE = re.compile(r"\S+@\S+\.\S+")
@@ -37,33 +33,40 @@ REFERENCES_HEADERS = {
 
 
 def _create_cover_page(candidate_name: str, client_name: str) -> bytes:
-    """Generate a branded cover page PDF (placeholder until DOCX template is provided)."""
-    pdf = FPDF(orientation="P", unit="mm", format="A4")
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=False)
-    page_h = 297
+    """Generate a branded cover page PDF from the DOCX template.
 
-    pdf.set_font(FONT_NAME, "B", 28)
-    pdf.set_text_color(*DARK)
-    pdf.set_y(page_h * 0.40)
-    pdf.cell(0, 14, f"CV OF {candidate_name.upper()}", align="C", new_x="LMARGIN", new_y="NEXT")
+    Fills 'PROFILE OF' and 'Prepared for' paragraphs, converts to PDF via MS Graph.
+    """
+    from docx import Document
 
-    pdf.set_font(FONT_NAME, "", 16)
-    pdf.set_text_color(*GREY)
-    pdf.ln(6)
-    pdf.cell(0, 10, f"Prepared for {client_name}", align="C", new_x="LMARGIN", new_y="NEXT")
+    doc = Document(str(COVER_DOCX_PATH))
 
-    pdf.set_y(page_h - 30)
-    pdf.set_font(FONT_NAME, "", 6)
-    pdf.set_text_color(*LIGHT_GREY)
-    for line in [
-        "Infinitas Talent Limited  |  2 Princes Street, Auckland 1010  |  +64 9 218 6127  |  infinitas.co.nz",
-        "This candidate is being represented by Infinitas Talent Limited.",
-        "Our standard terms of business will apply. This document is private and confidential.",
-    ]:
-        pdf.cell(0, 3.5, line, align="C", new_x="LMARGIN", new_y="NEXT")
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text.startswith("PROFILE OF"):
+            # Append candidate name to the existing run
+            for run in para.runs:
+                if "PROFILE OF" in run.text:
+                    run.text = f"PROFILE OF {candidate_name.upper()}"
+                    break
+        elif text.startswith("Prepared for"):
+            for run in para.runs:
+                if "Prepared for" in run.text:
+                    run.text = f"Prepared for {client_name}"
+                    break
 
-    return pdf.output()
+    # Save DOCX to bytes
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    docx_bytes = buf.getvalue()
+
+    # Convert to PDF via MS Graph
+    from ui import convert_docx_to_pdf
+    pdf_bytes = convert_docx_to_pdf(docx_bytes, "cover.docx")
+    if pdf_bytes is None:
+        raise RuntimeError("Cover page PDF conversion failed. Check MS Graph auth.")
+    return pdf_bytes
 
 
 def _redact_pdf(pdf_bytes: bytes) -> bytes:
