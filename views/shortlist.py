@@ -4,6 +4,33 @@ import streamlit as st
 from ui import page_header, step_flow, form_section
 
 
+QUAL_KEYWORDS = ["chartered", "ca ", "ca,", "cpa", "cima", "cfa", "iod", "member", "fellow", "certified", "registered", "accredited"]
+
+
+def _split_edu_qual(combined: str) -> tuple[str, str]:
+    """Split a combined education/qualifications string into separate fields.
+
+    Lines containing professional qualification keywords go to quals,
+    everything else goes to education.
+    """
+    if not combined:
+        return ("", "")
+
+    edu_parts = []
+    qual_parts = []
+
+    for line in combined.replace("\x0b", "\n").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if any(kw in line.lower() for kw in QUAL_KEYWORDS):
+            qual_parts.append(line)
+        else:
+            edu_parts.append(line)
+
+    return (", ".join(edu_parts), ", ".join(qual_parts))
+
+
 def render():
     page_header("Shortlist Generator", "Upload CVs to create a branded shortlist presentation")
 
@@ -283,21 +310,41 @@ def _render_candidate_editor(idx: int, cand: dict):
         })
         st.rerun()
 
-    # Education & Qualifications
-    form_section("Education & Qualifications")
-    cand["education_qualifications"] = st.text_area(
-        "Education and professional qualifications",
-        value=cand.get("education_qualifications", ""),
-        height=100,
-        key=f"cand_edu_{idx}",
-        label_visibility="collapsed",
-        placeholder="e.g. Bachelor of Commerce (Finance), University of Auckland\nChartered Accountant (CA), CAANZ",
-    )
-    cand["hide_prof_quals"] = st.checkbox(
-        "Remove Professional Qualifications row (not applicable)",
-        value=cand.get("hide_prof_quals", False),
-        key=f"cand_hide_quals_{idx}",
-    )
+    # Education
+    form_section("Education")
+    col_edu, col_edu_check = st.columns([4, 1])
+    with col_edu:
+        cand["education"] = st.text_input(
+            "Education",
+            value=cand.get("education", _split_edu_qual(cand.get("education_qualifications", ""))[0]),
+            key=f"cand_edu_{idx}",
+            label_visibility="collapsed",
+            placeholder="e.g. Bachelor of Commerce, University of Auckland",
+        )
+    with col_edu_check:
+        cand["show_education"] = st.checkbox(
+            "Include",
+            value=cand.get("show_education", True),
+            key=f"cand_show_edu_{idx}",
+        )
+
+    # Professional Qualifications
+    form_section("Professional Qualifications")
+    col_qual, col_qual_check = st.columns([4, 1])
+    with col_qual:
+        cand["professional_qualifications"] = st.text_input(
+            "Professional qualifications",
+            value=cand.get("professional_qualifications", _split_edu_qual(cand.get("education_qualifications", ""))[1]),
+            key=f"cand_quals_{idx}",
+            label_visibility="collapsed",
+            placeholder="e.g. Chartered Accountant (CA), CAANZ",
+        )
+    with col_qual_check:
+        cand["show_prof_quals"] = st.checkbox(
+            "Include",
+            value=cand.get("show_prof_quals", bool(cand.get("professional_qualifications", "").strip())),
+            key=f"cand_show_quals_{idx}",
+        )
 
     # Details
     form_section("Details")
