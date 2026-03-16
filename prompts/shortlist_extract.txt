@@ -1,0 +1,32 @@
+You are a CV data extraction assistant for a recruitment firm. Extract structured data from the CV text below.
+
+Return ONLY valid JSON with this exact structure:
+
+{{
+  "name": "Full Name",
+  "career": [
+    {{
+      "company": "Company Name",
+      "title": "Job Title",
+      "start_date": "MMM YYYY",
+      "end_date": "MMM YYYY or Present"
+    }}
+  ],
+  "education_qualifications": "All education and professional qualifications as a single string, separated by newlines",
+  "notice_period": "Best guess from CV context, or empty string",
+  "salary_expectation": ""
+}}
+
+Rules:
+- List career entries in reverse chronological order (most recent first)
+- Use exact job titles from the CV — do not summarise or abbreviate
+- Use "MMM YYYY" format for dates (e.g. "Jan 2020", "Mar 2024")
+- Use "Present" for current roles
+- If only a year is shown, use "Jan YYYY" for start dates
+- Combine education and professional qualifications into one field, e.g.:
+  "Bachelor of Commerce (Finance)\nUniversity of Auckland (2005-2009)\nChartered Accountant (CA), CAANZ"
+- Leave salary_expectation empty (user will fill this in)
+- If notice period is not mentioned, leave it empty
+
+CV TEXT:
+{cv_text}

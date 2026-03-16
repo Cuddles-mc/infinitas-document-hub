@@ -46,6 +46,7 @@ def navigate(page_key: str):
 # --- Page Registry ---
 PAGE_LABELS = {
     "home": "Home",
+    "shortlist": "Shortlist Generator",
     "reference_check": "Reference Check",
     "placement_letters": "Placement Letters",
     "terms_conditions": "Terms & Conditions",
@@ -93,6 +94,10 @@ page = st.session_state.current_page
 if page == "home":
     from views.home import render
     render(navigate)
+
+elif page == "shortlist":
+    from views.shortlist import render
+    render()
 
 elif page == "reference_check":
     from views.reference_check import render

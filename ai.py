@@ -68,3 +68,53 @@ def process_reference_transcript(
             answers[str(i)] = "[GAP] Not addressed in transcript."
 
     return answers
+
+
+def extract_cv_data(cv_text: str) -> dict:
+    """Extract structured candidate data from CV text.
+
+    Returns:
+        Dict with keys: name, career (list), education_qualifications,
+        notice_period, salary_expectation.
+    """
+    client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+    prompt_template = _load_prompt("shortlist_extract.txt")
+    user_message = prompt_template.format(cv_text=cv_text)
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1]
+        if text.endswith("```"):
+            text = text[:-3].strip()
+
+    data = json.loads(text)
+
+    # Ensure required keys exist
+    data.setdefault("name", "Unknown")
+    data.setdefault("career", [])
+    data.setdefault("education_qualifications", "")
+    data.setdefault("notice_period", "")
+    data.setdefault("salary_expectation", "")
+
+    return data
+
+
+def proofread_notes(notes: str) -> str:
+    """Proofread consultant notes — fix spelling/grammar, return corrected text."""
+    client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+    prompt_template = _load_prompt("shortlist_proofread.txt")
+    user_message = prompt_template.format(notes=notes)
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    return response.content[0].text.strip()
