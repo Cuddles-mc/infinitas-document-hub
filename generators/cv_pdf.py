@@ -1,121 +1,231 @@
 """CV PDF generator.
 
 Creates branded, redacted CV PDFs with an Infinitas cover page.
-Handles both DOCX and PDF input formats.
+Uses pymupdf (fitz) for proper PDF text redaction — preserves layout.
+Uses AI to identify what to remove beyond regex patterns.
 """
 
 import io
 import re
 from pathlib import Path
 
-from docx import Document
+import fitz  # pymupdf
 from fpdf import FPDF
 
 
-FONT_NAME = "Helvetica"  # Built-in PDF font (Aptos not available in fpdf)
-
-# Brand colours
-BLUE = (0, 72, 153)       # #004899
-DARK = (14, 40, 65)       # #0E2841
-GREY = (55, 65, 81)       # #374151
+FONT_NAME = "Helvetica"
+DARK = (14, 40, 65)
+GREY = (55, 65, 81)
 LIGHT_GREY = (111, 111, 111)
+
+# Regex patterns for PII
+EMAIL_RE = re.compile(r"\S+@\S+\.\S+")
+PHONE_RE = re.compile(r"(?:\+?\d{1,3}[\s.-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}")
+URL_RE = re.compile(r"https?://\S+|www\.\S+|linkedin\.com/\S*", re.IGNORECASE)
+ADDRESS_RE = re.compile(
+    r"\d+\s+[\w\s]+(?:street|st|road|rd|avenue|ave|drive|dr|lane|ln|"
+    r"crescent|cres|place|pl|way|terrace|tce|close|cl)\b",
+    re.IGNORECASE,
+)
+
+# Section headers that signal "references" section
+REFERENCES_HEADERS = {
+    "references", "referees", "reference", "referee",
+    "references available upon request",
+    "references available on request",
+}
 
 
 def _create_cover_page(candidate_name: str, client_name: str) -> bytes:
-    """Generate a branded cover page PDF.
-
-    Layout matches the existing Infinitas CV cover page:
-    - "CV OF [NAME]" centred on page
-    - "Prepared for [Client]" below
-    - Disclaimer footer at bottom
-    """
+    """Generate a branded cover page PDF (placeholder until DOCX template is provided)."""
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.add_page()
     pdf.set_auto_page_break(auto=False)
-
-    page_w = 210
     page_h = 297
 
-    # --- "CV OF [NAME]" centred ---
     pdf.set_font(FONT_NAME, "B", 28)
     pdf.set_text_color(*DARK)
+    pdf.set_y(page_h * 0.40)
+    pdf.cell(0, 14, f"CV OF {candidate_name.upper()}", align="C", new_x="LMARGIN", new_y="NEXT")
 
-    title_text = f"CV OF {candidate_name.upper()}"
-    title_y = page_h * 0.40  # 40% down the page
-    pdf.set_y(title_y)
-    pdf.cell(0, 14, title_text, align="C", new_x="LMARGIN", new_y="NEXT")
-
-    # --- "Prepared for [Client]" ---
     pdf.set_font(FONT_NAME, "", 16)
     pdf.set_text_color(*GREY)
     pdf.ln(6)
     pdf.cell(0, 10, f"Prepared for {client_name}", align="C", new_x="LMARGIN", new_y="NEXT")
 
-    # --- Disclaimer footer ---
-    footer_y = page_h - 30
-    pdf.set_y(footer_y)
+    pdf.set_y(page_h - 30)
     pdf.set_font(FONT_NAME, "", 6)
     pdf.set_text_color(*LIGHT_GREY)
-
-    footer_lines = [
+    for line in [
         "Infinitas Talent Limited  |  2 Princes Street, Auckland 1010  |  +64 9 218 6127  |  infinitas.co.nz",
         "This candidate is being represented by Infinitas Talent Limited.",
         "Our standard terms of business will apply. This document is private and confidential.",
-    ]
-    for line in footer_lines:
+    ]:
         pdf.cell(0, 3.5, line, align="C", new_x="LMARGIN", new_y="NEXT")
 
     return pdf.output()
 
 
-def _redact_docx(docx_bytes: bytes) -> bytes:
-    """Strip PII patterns from a DOCX file, preserving formatting.
+def _redact_pdf(pdf_bytes: bytes) -> bytes:
+    """Redact PII from a PDF using pymupdf. Preserves layout.
 
-    Removes: phone numbers, emails, URLs, addresses, references section.
-    Returns cleaned DOCX bytes.
+    Finds and whites-out: emails, phone numbers, URLs, addresses.
+    Removes entire references/referees section.
+    Also removes all link annotations.
     """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+    for page in doc:
+        text = page.get_text()
+        lines = text.split("\n")
+
+        # --- Regex-based redaction ---
+        for pattern in [EMAIL_RE, URL_RE]:
+            for match in pattern.finditer(text):
+                found = match.group()
+                rects = page.search_for(found)
+                for rect in rects:
+                    page.add_redact_annot(rect, fill=(1, 1, 1))
+
+        # Phone numbers — only redact if 7+ digits
+        for match in PHONE_RE.finditer(text):
+            digits = re.sub(r"\D", "", match.group())
+            if len(digits) >= 7:
+                found = match.group().strip()
+                if found:
+                    rects = page.search_for(found)
+                    for rect in rects:
+                        page.add_redact_annot(rect, fill=(1, 1, 1))
+
+        # Addresses
+        for match in ADDRESS_RE.finditer(text):
+            rects = page.search_for(match.group())
+            for rect in rects:
+                page.add_redact_annot(rect, fill=(1, 1, 1))
+
+        # --- References section detection ---
+        in_references = False
+        for line in lines:
+            stripped = line.strip().lower().rstrip(":")
+            if stripped in REFERENCES_HEADERS:
+                in_references = True
+
+            if in_references and line.strip():
+                rects = page.search_for(line.strip())
+                for rect in rects:
+                    page.add_redact_annot(rect, fill=(1, 1, 1))
+
+        # --- Remove link annotations ---
+        annots = page.annots()
+        if annots:
+            for annot in annots:
+                if annot.type[0] == 2:  # Link annotation
+                    page.delete_annot(annot)
+
+        # Apply all redactions
+        page.apply_redactions()
+
+    # Save
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def _redact_pdf_with_ai(pdf_bytes: bytes) -> bytes:
+    """AI-enhanced PDF redaction. Uses regex first, then AI for harder cases.
+
+    AI identifies additional PII that regex misses (unusual phone formats,
+    postal codes, suburb names used as addresses, etc.).
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    full_text = "\n".join(page.get_text() for page in doc)
+    doc.close()
+
+    # Get AI to identify what to remove
+    from ai import redact_cv_text
+    redacted_text = redact_cv_text(full_text)
+
+    # Find lines that were removed by AI
+    original_lines = [l.strip() for l in full_text.split("\n") if l.strip()]
+    redacted_lines = set(l.strip() for l in redacted_text.split("\n") if l.strip())
+    removed_lines = [l for l in original_lines if l not in redacted_lines]
+
+    # Do regex redaction first
+    partially_redacted = _redact_pdf(pdf_bytes)
+
+    # Then redact AI-identified lines
+    if removed_lines:
+        doc = fitz.open(stream=partially_redacted, filetype="pdf")
+        for page in doc:
+            for line in removed_lines:
+                if len(line) < 3:
+                    continue
+                rects = page.search_for(line)
+                for rect in rects:
+                    page.add_redact_annot(rect, fill=(1, 1, 1))
+            page.apply_redactions()
+
+        buf = io.BytesIO()
+        doc.save(buf)
+        doc.close()
+        buf.seek(0)
+        return buf.getvalue()
+
+    return partially_redacted
+
+
+def _redact_docx_with_ai(docx_bytes: bytes) -> bytes:
+    """Redact a DOCX file using AI + regex. Preserves formatting."""
+    from docx import Document
+
     doc = Document(io.BytesIO(docx_bytes))
 
-    # Regex patterns for PII
-    phone_pattern = re.compile(
-        r"(\+?\d{1,3}[\s.-]?)?\(?\d{1,4}\)?[\s.-]?\d{2,4}[\s.-]?\d{2,4}[\s.-]?\d{0,4}"
-    )
-    email_pattern = re.compile(r"\S+@\S+\.\S+")
-    url_pattern = re.compile(r"https?://\S+|www\.\S+|linkedin\.com\S*", re.IGNORECASE)
-    address_pattern = re.compile(
-        r"\d+\s+[\w\s]+(?:street|st|road|rd|avenue|ave|drive|dr|lane|ln|crescent|cres|place|pl|way|terrace|tce)\b",
-        re.IGNORECASE,
-    )
+    # Get full text and AI-redacted version
+    full_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    from ai import redact_cv_text
+    redacted_text = redact_cv_text(full_text)
 
-    in_references = False
+    # Find removed lines
+    original_lines = set(l.strip() for l in full_text.split("\n") if l.strip())
+    redacted_lines = set(l.strip() for l in redacted_text.split("\n") if l.strip())
+    removed_lines = original_lines - redacted_lines
+
+    in_removed_section = False
 
     for para in doc.paragraphs:
-        text_lower = para.text.strip().lower()
+        para_text = para.text.strip()
 
-        # Detect references section
-        if text_lower in ("references", "referees", "references available upon request"):
-            in_references = True
+        # Check if this paragraph was removed by AI
+        if para_text and para_text in removed_lines:
+            for run in para.runs:
+                run.text = ""
+            in_removed_section = True
+            continue
 
-        # Clear everything in references section
-        if in_references:
+        if para_text and para_text in redacted_lines:
+            in_removed_section = False
+
+        if in_removed_section and para_text and para_text not in redacted_lines:
             for run in para.runs:
                 run.text = ""
             continue
 
-        # Strip PII from runs
+        # Regex PII stripping on runs
         for run in para.runs:
             original = run.text
-            cleaned = email_pattern.sub("", original)
-            cleaned = url_pattern.sub("", cleaned)
-            # Only strip phone patterns that look like actual phone numbers (7+ digits)
-            for match in phone_pattern.finditer(cleaned):
+            cleaned = EMAIL_RE.sub("", original)
+            cleaned = URL_RE.sub("", cleaned)
+            for match in PHONE_RE.finditer(cleaned):
                 digits = re.sub(r"\D", "", match.group())
                 if len(digits) >= 7:
                     cleaned = cleaned.replace(match.group(), "")
-            cleaned = address_pattern.sub("", cleaned)
-            run.text = cleaned.strip() if cleaned.strip() != original.strip() else original
+            cleaned = re.sub(r"  +", " ", cleaned).strip()
+            if cleaned != original:
+                run.text = cleaned
 
-    # Remove hyperlinks from relationships
+    # Remove hyperlinks
     for rel in list(doc.part.rels.values()):
         if "hyperlink" in str(rel.reltype).lower():
             try:
@@ -129,21 +239,13 @@ def _redact_docx(docx_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-def _merge_pdfs(cover_pdf: bytes, cv_pdf: bytes) -> bytes:
-    """Merge cover page PDF with CV PDF."""
+def _merge_pdfs(*pdf_bytes_list: bytes) -> bytes:
+    """Merge multiple PDFs into one."""
     import pypdf
-
     writer = pypdf.PdfWriter()
-
-    # Add cover page
-    cover_reader = pypdf.PdfReader(io.BytesIO(cover_pdf))
-    writer.add_page(cover_reader.pages[0])
-
-    # Add CV pages
-    cv_reader = pypdf.PdfReader(io.BytesIO(cv_pdf))
-    for page in cv_reader.pages:
-        writer.add_page(page)
-
+    for pdf_bytes in pdf_bytes_list:
+        for page in pypdf.PdfReader(io.BytesIO(pdf_bytes)).pages:
+            writer.add_page(page)
     buf = io.BytesIO()
     writer.write(buf)
     buf.seek(0)
@@ -155,52 +257,24 @@ def generate_cv_pdf(
     client_name: str,
     cv_file_bytes: bytes,
     cv_filename: str,
-    use_ai_redaction: bool = True,
 ) -> bytes:
     """Generate a branded, redacted CV PDF.
 
-    Args:
-        candidate_name: Candidate's full name
-        client_name: Client company name
-        cv_file_bytes: Raw uploaded file bytes
-        cv_filename: Original filename (for format detection)
-        use_ai_redaction: Whether to use AI for deeper redaction
-
-    Returns:
-        Final PDF bytes (cover page + redacted CV).
+    For PDF: pymupdf redaction (preserves original layout).
+    For DOCX: AI + regex redaction on document, convert to PDF via MS Graph.
+    Both get a branded cover page prepended.
     """
-    # Generate cover page
     cover_pdf = _create_cover_page(candidate_name, client_name)
-
     is_docx = cv_filename.lower().endswith(".docx")
 
     if is_docx:
-        # Redact DOCX first (preserves formatting)
-        redacted_docx = _redact_docx(cv_file_bytes)
-
-        # Convert DOCX to PDF via MS Graph
+        redacted_docx = _redact_docx_with_ai(cv_file_bytes)
         from ui import convert_docx_to_pdf
         cv_pdf = convert_docx_to_pdf(redacted_docx, cv_filename)
         if cv_pdf is None:
-            raise RuntimeError(
-                "DOCX to PDF conversion failed. "
-                "Check MS Graph authentication."
-            )
+            raise RuntimeError("DOCX to PDF conversion failed. Check MS Graph auth.")
     else:
-        # PDF input — use as-is (limited redaction possible)
-        # Strip link annotations
-        import pypdf
-        reader = pypdf.PdfReader(io.BytesIO(cv_file_bytes))
-        writer = pypdf.PdfWriter()
-        for page in reader.pages:
-            # Remove annotation links
-            if "/Annots" in page:
-                page[pypdf.generic.NameObject("/Annots")] = pypdf.generic.ArrayObject()
-            writer.add_page(page)
-        buf = io.BytesIO()
-        writer.write(buf)
-        buf.seek(0)
-        cv_pdf = buf.getvalue()
+        # PDF — redact in-place, preserving layout
+        cv_pdf = _redact_pdf_with_ai(cv_file_bytes)
 
-    # Merge cover + CV
     return _merge_pdfs(cover_pdf, cv_pdf)
