@@ -243,11 +243,20 @@ def generate_shortlist(
         photo_bytes = cand.get("photo") or placeholder_bytes
 
         for shape in slide.shapes:
-            # Candidate name
+            # Candidate name — centre over photo
             if shape.name == "TextBox 6":
                 for para in shape.text_frame.paragraphs:
                     for i, run in enumerate(para.runs):
                         run.text = cand["name"] if i == 0 else ""
+                # Find photo shape to align name over it
+                photo_shape = None
+                for s in slide.shapes:
+                    if s.shape_type == 13:
+                        photo_shape = s
+                        break
+                if photo_shape is not None:
+                    photo_cx = photo_shape.left + photo_shape.width // 2
+                    shape.left = photo_cx - shape.width // 2
 
             # Career history table
             elif shape.name == "Table 7":
