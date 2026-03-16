@@ -49,8 +49,8 @@ PAGE_LABELS = {
     "shortlist": "Shortlist Generator",
     "reference_check": "Reference Check",
     "placement_letters": "Placement Letters",
-    "terms_conditions": "Terms & Conditions",
-    "contractor_agreement": "Contractor Agreement",
+    # "terms_conditions": "Terms & Conditions",
+    # "contractor_agreement": "Contractor Agreement",
 }
 
 # --- Sidebar ---
