@@ -21,7 +21,7 @@ def _render_upload():
     form_section("Details")
     col1, col2 = st.columns(2)
     with col1:
-        client_name = st.text_input("Client name *", key="cvp_client")
+        client_name = st.text_input("Client name *", key="cvp_client_input")
     with col2:
         st.text_input(
             "Candidate names (optional — auto-detected from CV)",
@@ -89,7 +89,7 @@ def _render_upload():
 
         if pdfs:
             st.session_state.cvp_pdfs = pdfs
-            st.session_state.cvp_client = client_name
+            st.session_state.cvp_client_name = client_name
             st.rerun()
 
 
@@ -99,7 +99,7 @@ def _render_download():
         st.rerun()
 
     pdfs = st.session_state.cvp_pdfs
-    client = st.session_state.cvp_client
+    client = st.session_state.cvp_client_name
 
     st.success(f"Generated {len(pdfs)} redacted CV(s) for **{client}**")
 
