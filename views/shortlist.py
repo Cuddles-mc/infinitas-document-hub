@@ -249,6 +249,66 @@ def _extract_docx_text(data: bytes) -> str:
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
+def _parse_notes_docx(uploaded_file, candidates: list[dict]) -> dict[int, str]:
+    """Parse a DOCX with candidate notes, match sections to candidates.
+
+    Expects candidate names as headings (or bold lines) with notes below.
+    Returns {candidate_index: notes_text} for matched candidates.
+    """
+    import io
+    from docx import Document
+
+    data = uploaded_file.read()
+    uploaded_file.seek(0)
+    doc = Document(io.BytesIO(data))
+
+    # Build candidate name lookup (normalised lowercase → index)
+    name_to_idx = {}
+    for i, cand in enumerate(candidates):
+        name = cand.get("name", "").strip()
+        if name:
+            name_to_idx[name.lower()] = i
+            # Also match last name only (for "Smith" matching "Jane Smith")
+            parts = name.split()
+            if len(parts) > 1:
+                name_to_idx[parts[-1].lower()] = i
+
+    # Walk paragraphs — detect heading-like lines that match a candidate name
+    sections: dict[int, list[str]] = {}
+    current_idx = None
+
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+
+        # Check if this paragraph is a heading or bold line matching a candidate
+        is_heading = (
+            para.style.name.startswith("Heading")
+            or (para.runs and all(r.bold for r in para.runs if r.text.strip()))
+        )
+
+        if is_heading:
+            # Try to match against candidate names
+            matched = None
+            text_lower = text.lower()
+            for name_key, idx in name_to_idx.items():
+                if name_key in text_lower or text_lower in name_key:
+                    matched = idx
+                    break
+            if matched is not None:
+                current_idx = matched
+                sections[current_idx] = []
+                continue
+
+        # Append text to current candidate's notes
+        if current_idx is not None:
+            sections[current_idx].append(text)
+
+    # Join each candidate's paragraphs with double newlines
+    return {idx: "\n\n".join(lines) for idx, lines in sections.items() if lines}
+
+
 # ---------------------------------------------------------------------------
 # Step 2: Review & Edit
 # ---------------------------------------------------------------------------
@@ -264,6 +324,29 @@ def _render_review():
     st.info(f"**{role_title}** at **{client_name}** — {len(st.session_state.sl_candidates)} candidate(s) — {template_label}")
 
     candidates = st.session_state.sl_candidates
+
+    # Upload notes document
+    form_section("Import Notes")
+    notes_file = st.file_uploader(
+        "Upload a Word document with candidate notes (optional)",
+        type=["docx"],
+        key="sl_notes_upload",
+        help="One document with candidate names as headings, notes below each.",
+    )
+    if notes_file:
+        col_import, _ = st.columns([1, 2])
+        with col_import:
+            if st.button("Import notes", type="primary", key="sl_import_notes"):
+                notes_map = _parse_notes_docx(notes_file, candidates)
+                if notes_map:
+                    for idx, notes_text in notes_map.items():
+                        candidates[idx]["notes"] = notes_text
+                        candidates[idx]["use_lorem"] = False
+                    matched = [candidates[i]["name"] for i in notes_map]
+                    st.success(f"Imported notes for: {', '.join(matched)}")
+                    st.rerun()
+                else:
+                    st.warning("Could not match any candidate names in the document.")
 
     for idx, cand in enumerate(candidates):
         with st.expander(f"**{cand.get('name', 'Unknown')}** ({cand.get('source_file', '')})", expanded=True):
