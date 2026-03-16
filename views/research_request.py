@@ -73,10 +73,10 @@ def _cancel_request(request_id: int) -> bool:
 # --- Type-specific form fields ---
 
 REQUEST_TYPES = {
-    "Person": "person",
-    "Company": "company",
-    "Sector": "sector",
-    "Intel Signal": "intel",
+    "Person": "person_profile",
+    "Company": "company_research",
+    "Sector": "sector_overview",
+    "Intel Signal": "market_intel",
     "BD Dossier": "dossier",
     "BD Playbook": "playbook",
 }
@@ -160,7 +160,7 @@ def _render_form():
     # Dynamic fields per type
     context_data = {}
 
-    if request_type == "person":
+    if request_type == "person_profile":
         col1, col2 = st.columns(2)
         with col1:
             subject = st.text_input("Person name *")
@@ -175,7 +175,7 @@ def _render_form():
         if context_notes:
             context_data["notes"] = context_notes
 
-    elif request_type == "company":
+    elif request_type == "company_research":
         col1, col2 = st.columns(2)
         with col1:
             subject = st.text_input("Company name *")
@@ -190,7 +190,7 @@ def _render_form():
         if context_notes:
             context_data["notes"] = context_notes
 
-    elif request_type == "sector":
+    elif request_type == "sector_overview":
         col1, col2 = st.columns(2)
         with col1:
             subject = st.text_input("Sector name *")
@@ -202,7 +202,7 @@ def _render_form():
         if context_notes:
             context_data["notes"] = context_notes
 
-    elif request_type == "intel":
+    elif request_type == "market_intel":
         col1, col2 = st.columns(2)
         with col1:
             subject = st.text_input("Signal subject *")
