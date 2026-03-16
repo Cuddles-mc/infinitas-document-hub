@@ -248,28 +248,6 @@ def _render_review():
                 st.code(traceback.format_exc())
                 return
 
-        # Generate redacted CV PDFs for candidates with uploaded CVs
-        cv_pdfs = {}
-        cands_with_cvs = [c for c in valid_candidates if c.get("cv_bytes")]
-        if cands_with_cvs:
-            progress = st.progress(0, text="Generating redacted CVs...")
-            for i, cand in enumerate(cands_with_cvs):
-                progress.progress(i / len(cands_with_cvs), text=f"Processing CV for {cand['name']}...")
-                try:
-                    from generators.cv_pdf import generate_cv_pdf
-                    pdf_bytes = generate_cv_pdf(
-                        candidate_name=cand["name"],
-                        client_name=client_name,
-                        cv_file_bytes=cand["cv_bytes"],
-                        cv_filename=cand.get("source_file", "cv.docx"),
-                    )
-                    cv_pdf_name = f"CV of {cand['name']} prepared for {client_name} by Infinitas.pdf"
-                    cv_pdfs[cv_pdf_name] = pdf_bytes
-                except Exception as e:
-                    st.warning(f"Could not generate CV PDF for {cand['name']}: {e}")
-            progress.progress(1.0, text="Done!")
-
-        st.session_state.sl_cv_pdfs = cv_pdfs
         st.rerun()
 
 
@@ -512,20 +490,6 @@ def _render_download():
         key="dl_pptx",
     )
     st.caption("Fully editable — adjust fonts, layout, and content in PowerPoint.")
-
-    # Redacted CV PDFs
-    cv_pdfs = st.session_state.get("sl_cv_pdfs", {})
-    if cv_pdfs:
-        form_section("Candidate CVs (redacted)")
-        for cv_name, cv_bytes in cv_pdfs.items():
-            st.download_button(
-                label=f"Download {cv_name}",
-                data=cv_bytes,
-                file_name=cv_name,
-                mime="application/pdf",
-                key=f"dl_{cv_name}",
-            )
-        st.caption("Personal details, links, and references have been removed.")
 
     # Start over
     st.divider()
