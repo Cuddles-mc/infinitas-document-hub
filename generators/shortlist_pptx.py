@@ -257,6 +257,12 @@ def generate_shortlist(
                 template_row_xml = None
                 if len(tbl.tr_lst) > 1:
                     template_row_xml = deepcopy(tbl.tr_lst[1])
+                    # Force 7pt font on career table rows
+                    for tc in template_row_xml.findall(qn("a:tc")):
+                        for r in tc.iter(qn("a:r")):
+                            rPr = r.find(qn("a:rPr"))
+                            if rPr is not None:
+                                rPr.set("sz", "700")
 
                 while len(tbl.tr_lst) > 1:
                     tbl.remove(tbl.tr_lst[-1])
@@ -286,7 +292,7 @@ def generate_shortlist(
 
                 show_edu = cand.get("show_education", True)
                 show_quals = cand.get("show_prof_quals", True)
-                edu = cand.get("education", "") or cand.get("education_qualifications", "")
+                edu = cand.get("education", "")
                 quals = cand.get("professional_qualifications", "")
 
                 # Set all 4 rows first

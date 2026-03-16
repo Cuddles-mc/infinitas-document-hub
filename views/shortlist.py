@@ -310,13 +310,21 @@ def _render_candidate_editor(idx: int, cand: dict):
         })
         st.rerun()
 
+    # Split combined field on first render only
+    if "education" not in cand and "education_qualifications" in cand:
+        edu_split, qual_split = _split_edu_qual(cand.get("education_qualifications", ""))
+        cand["education"] = edu_split
+        cand["professional_qualifications"] = qual_split
+        cand["show_education"] = bool(edu_split.strip())
+        cand["show_prof_quals"] = bool(qual_split.strip())
+
     # Education
     form_section("Education")
     col_edu, col_edu_check = st.columns([4, 1])
     with col_edu:
         cand["education"] = st.text_input(
             "Education",
-            value=cand.get("education", _split_edu_qual(cand.get("education_qualifications", ""))[0]),
+            value=cand.get("education", ""),
             key=f"cand_edu_{idx}",
             label_visibility="collapsed",
             placeholder="e.g. Bachelor of Commerce, University of Auckland",
@@ -324,7 +332,7 @@ def _render_candidate_editor(idx: int, cand: dict):
     with col_edu_check:
         cand["show_education"] = st.checkbox(
             "Include",
-            value=cand.get("show_education", True),
+            value=cand.get("show_education", bool(cand.get("education", "").strip())),
             key=f"cand_show_edu_{idx}",
         )
 
@@ -334,7 +342,7 @@ def _render_candidate_editor(idx: int, cand: dict):
     with col_qual:
         cand["professional_qualifications"] = st.text_input(
             "Professional qualifications",
-            value=cand.get("professional_qualifications", _split_edu_qual(cand.get("education_qualifications", ""))[1]),
+            value=cand.get("professional_qualifications", ""),
             key=f"cand_quals_{idx}",
             label_visibility="collapsed",
             placeholder="e.g. Chartered Accountant (CA), CAANZ",
