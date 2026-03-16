@@ -252,7 +252,8 @@ def _extract_docx_text(data: bytes) -> str:
 def _parse_notes_docx(uploaded_file, candidates: list[dict]) -> dict[int, str]:
     """Parse a DOCX with candidate notes, match sections to candidates.
 
-    Expects candidate names as headings (or bold lines) with notes below.
+    Detects candidate name lines by matching against known candidate names,
+    regardless of whether they're styled as headings or plain text.
     Returns {candidate_index: notes_text} for matched candidates.
     """
     import io
@@ -262,18 +263,35 @@ def _parse_notes_docx(uploaded_file, candidates: list[dict]) -> dict[int, str]:
     uploaded_file.seek(0)
     doc = Document(io.BytesIO(data))
 
-    # Build candidate name lookup (normalised lowercase → index)
-    name_to_idx = {}
+    # Build candidate name lookup (normalised lowercase -> index)
+    # Full names first, then last names (full names take priority)
+    full_names = {}
+    last_names = {}
     for i, cand in enumerate(candidates):
         name = cand.get("name", "").strip()
         if name:
-            name_to_idx[name.lower()] = i
-            # Also match last name only (for "Smith" matching "Jane Smith")
+            full_names[name.lower()] = i
             parts = name.split()
             if len(parts) > 1:
-                name_to_idx[parts[-1].lower()] = i
+                last_names[parts[-1].lower()] = i
 
-    # Walk paragraphs — detect heading-like lines that match a candidate name
+    def _match_name(text: str) -> int | None:
+        """Check if a line matches a candidate name. Short lines only."""
+        text_lower = text.lower().strip()
+        # Name lines are short — skip anything that looks like a sentence
+        if len(text_lower.split()) > 5:
+            return None
+        # Try full name match first
+        for name_key, idx in full_names.items():
+            if name_key in text_lower or text_lower in name_key:
+                return idx
+        # Fall back to last name
+        for name_key, idx in last_names.items():
+            if text_lower == name_key or text_lower.startswith(name_key) or text_lower.endswith(name_key):
+                return idx
+        return None
+
+    # Walk paragraphs
     sections: dict[int, list[str]] = {}
     current_idx = None
 
@@ -282,26 +300,12 @@ def _parse_notes_docx(uploaded_file, candidates: list[dict]) -> dict[int, str]:
         if not text:
             continue
 
-        # Check if this paragraph is a heading or bold line matching a candidate
-        is_heading = (
-            para.style.name.startswith("Heading")
-            or (para.runs and all(r.bold for r in para.runs if r.text.strip()))
-        )
+        matched = _match_name(text)
+        if matched is not None:
+            current_idx = matched
+            sections[current_idx] = []
+            continue
 
-        if is_heading:
-            # Try to match against candidate names
-            matched = None
-            text_lower = text.lower()
-            for name_key, idx in name_to_idx.items():
-                if name_key in text_lower or text_lower in name_key:
-                    matched = idx
-                    break
-            if matched is not None:
-                current_idx = matched
-                sections[current_idx] = []
-                continue
-
-        # Append text to current candidate's notes
         if current_idx is not None:
             sections[current_idx].append(text)
 
