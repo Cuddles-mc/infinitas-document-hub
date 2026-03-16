@@ -47,7 +47,7 @@ def navigate(page_key: str):
 PAGE_LABELS = {
     "home": "Home",
     "shortlist": "Shortlist Generator",
-    "cv_prep": "CV Preparation",
+    # "cv_prep": "CV Preparation",
     "reference_check": "Reference Check",
     "placement_letters": "Placement Letters",
     # "terms_conditions": "Terms & Conditions",
