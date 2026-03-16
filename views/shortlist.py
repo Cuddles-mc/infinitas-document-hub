@@ -98,7 +98,11 @@ def _render_upload():
             )
 
             try:
-                cv_text = _extract_text(f)
+                # Store raw bytes before reading for text extraction
+                cv_raw = f.read()
+                f.seek(0)
+
+                cv_text = _extract_text_from_bytes(cv_raw, f.name)
                 if not cv_text.strip():
                     st.warning(f"Could not extract text from {f.name}")
                     continue
@@ -106,10 +110,11 @@ def _render_upload():
                 from ai import extract_cv_data
                 data = extract_cv_data(cv_text)
 
-                # Add include checkbox default and source filename
+                # Add defaults and store original CV bytes
                 for entry in data.get("career", []):
                     entry["include"] = True
                 data["source_file"] = f.name
+                data["cv_bytes"] = cv_raw
                 data["notes"] = ""
                 data["use_lorem"] = True
                 candidates.append(data)
@@ -132,7 +137,12 @@ def _extract_text(uploaded_file) -> str:
     """Extract plain text from an uploaded PDF or DOCX file."""
     name = uploaded_file.name.lower()
     data = uploaded_file.read()
+    return _extract_text_from_bytes(data, name)
 
+
+def _extract_text_from_bytes(data: bytes, filename: str) -> str:
+    """Extract plain text from raw bytes given the filename for format detection."""
+    name = filename.lower()
     if name.endswith(".pdf"):
         return _extract_pdf_text(data)
     elif name.endswith(".docx"):
@@ -221,7 +231,7 @@ def _render_review():
             st.error("At least one candidate needs a name.")
             return
 
-        with st.spinner("Generating PPTX..."):
+        with st.spinner("Generating shortlist PPTX..."):
             try:
                 from generators.shortlist_pptx import generate_shortlist
                 pptx_bytes = generate_shortlist(
@@ -232,11 +242,35 @@ def _render_review():
                 filename = f"{role_title} Shortlist prepared for {client_name} by Infinitas.pptx"
                 st.session_state.sl_pptx_bytes = pptx_bytes
                 st.session_state.sl_pptx_filename = filename
-                st.rerun()
             except Exception as e:
                 st.error(f"Error generating PPTX: {e}")
                 import traceback
                 st.code(traceback.format_exc())
+                return
+
+        # Generate redacted CV PDFs for candidates with uploaded CVs
+        cv_pdfs = {}
+        cands_with_cvs = [c for c in valid_candidates if c.get("cv_bytes")]
+        if cands_with_cvs:
+            progress = st.progress(0, text="Generating redacted CVs...")
+            for i, cand in enumerate(cands_with_cvs):
+                progress.progress(i / len(cands_with_cvs), text=f"Processing CV for {cand['name']}...")
+                try:
+                    from generators.cv_pdf import generate_cv_pdf
+                    pdf_bytes = generate_cv_pdf(
+                        candidate_name=cand["name"],
+                        client_name=client_name,
+                        cv_file_bytes=cand["cv_bytes"],
+                        cv_filename=cand.get("source_file", "cv.docx"),
+                    )
+                    cv_pdf_name = f"CV of {cand['name']} prepared for {client_name} by Infinitas.pdf"
+                    cv_pdfs[cv_pdf_name] = pdf_bytes
+                except Exception as e:
+                    st.warning(f"Could not generate CV PDF for {cand['name']}: {e}")
+            progress.progress(1.0, text="Done!")
+
+        st.session_state.sl_cv_pdfs = cv_pdfs
+        st.rerun()
 
 
 def _render_candidate_editor(idx: int, cand: dict):
@@ -466,7 +500,8 @@ def _render_download():
         included_roles = sum(1 for c in cand.get("career", []) if c.get("include", True))
         st.markdown(f"- **{cand.get('name', 'Unknown')}** — {included_roles} career entries")
 
-    st.markdown("")
+    # Shortlist PPTX download
+    form_section("Shortlist Presentation")
     pptx_mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     st.download_button(
         label="Download Shortlist (.pptx)",
@@ -474,9 +509,23 @@ def _render_download():
         file_name=filename,
         mime=pptx_mime,
         type="primary",
+        key="dl_pptx",
     )
+    st.caption("Fully editable — adjust fonts, layout, and content in PowerPoint.")
 
-    st.caption("The PPTX is fully editable — you can adjust fonts, layout, and content in PowerPoint.")
+    # Redacted CV PDFs
+    cv_pdfs = st.session_state.get("sl_cv_pdfs", {})
+    if cv_pdfs:
+        form_section("Candidate CVs (redacted)")
+        for cv_name, cv_bytes in cv_pdfs.items():
+            st.download_button(
+                label=f"Download {cv_name}",
+                data=cv_bytes,
+                file_name=cv_name,
+                mime="application/pdf",
+                key=f"dl_{cv_name}",
+            )
+        st.caption("Personal details, links, and references have been removed.")
 
     # Start over
     st.divider()

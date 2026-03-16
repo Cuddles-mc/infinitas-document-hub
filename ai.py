@@ -118,3 +118,18 @@ def proofread_notes(notes: str) -> str:
     )
 
     return response.content[0].text.strip()
+
+
+def redact_cv_text(cv_text: str) -> str:
+    """Remove personal details, links, and references from CV text."""
+    client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+    prompt_template = _load_prompt("cv_redact.txt")
+    user_message = prompt_template.format(cv_text=cv_text)
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=8192,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    return response.content[0].text.strip()
