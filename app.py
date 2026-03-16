@@ -47,6 +47,7 @@ def navigate(page_key: str):
 PAGE_LABELS = {
     "home": "Home",
     "shortlist": "Shortlist Generator",
+    "cv_prep": "CV Preparation",
     "reference_check": "Reference Check",
     "placement_letters": "Placement Letters",
     # "terms_conditions": "Terms & Conditions",
@@ -97,6 +98,10 @@ if page == "home":
 
 elif page == "shortlist":
     from views.shortlist import render
+    render()
+
+elif page == "cv_prep":
+    from views.cv_prep import render
     render()
 
 elif page == "reference_check":
