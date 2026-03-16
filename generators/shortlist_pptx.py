@@ -151,6 +151,36 @@ def _set_detail_cell(cell, text: str):
             p_elem.append(r_elem)
 
 
+def _split_role_title(title: str) -> list[str]:
+    """Split a role title into two balanced lines for the cover page.
+
+    Patterns:
+      'CEO'                     → ['CEO']
+      'COMMERCIAL DIRECTOR'     → ['COMMERCIAL', 'DIRECTOR']
+      'CHIEF EXECUTIVE OFFICER' → ['CHIEF', 'EXECUTIVE OFFICER']
+      'HEAD OF FINANCE'         → ['HEAD OF', 'FINANCE']
+      'NATIONAL SALES DIRECTOR' → ['NATIONAL SALES', 'DIRECTOR']
+    """
+    words = title.strip().split()
+    if len(words) <= 1:
+        return [title.strip()]
+    if len(words) == 2:
+        return words
+
+    # For 3+ words: split to put the last word (the role noun) on line 2
+    # unless that makes line 2 much shorter — then balance more evenly
+    # Common pattern: qualifier words + role word
+    last_word_split = [" ".join(words[:-1]), words[-1]]
+    mid = len(words) // 2
+    mid_split = [" ".join(words[:mid]), " ".join(words[mid:])]
+
+    # Use the split where lines are most balanced in character length
+    last_diff = abs(len(last_word_split[0]) - len(last_word_split[1]))
+    mid_diff = abs(len(mid_split[0]) - len(mid_split[1]))
+
+    return mid_split if mid_diff < last_diff else last_word_split
+
+
 def _replace_picture(slide, old_shape, new_image_bytes: bytes):
     """Replace a Picture shape's image with new bytes, keeping position and size."""
     left = old_shape.left
@@ -216,6 +246,9 @@ def generate_shortlist(
     placeholder_bytes = PLACEHOLDER_PATH.read_bytes() if PLACEHOLDER_PATH.exists() else None
 
     # --- Cover slide (slide 0) ---
+    title_lines = _split_role_title(role_title.upper())
+    title_font_size = "3400" if len(role_title) > 20 else "4300"  # 34pt or 43pt (hundredths)
+
     slide0 = prs.slides[0]
     for shape in slide0.shapes:
         if not shape.has_text_frame:
@@ -224,10 +257,16 @@ def generate_shortlist(
             text = para.text.strip()
             if text == "COMMERCIAL":
                 for run in para.runs:
-                    run.text = role_title.upper().rsplit(" ", 1)[0] if " " in role_title else role_title.upper()
+                    run.text = title_lines[0]
+                    rPr = run._r.find(qn("a:rPr"))
+                    if rPr is not None:
+                        rPr.set("sz", title_font_size)
             elif text == "DIRECTOR":
                 for run in para.runs:
-                    run.text = role_title.upper().rsplit(" ", 1)[-1] if " " in role_title else ""
+                    run.text = title_lines[1] if len(title_lines) > 1 else ""
+                    rPr = run._r.find(qn("a:rPr"))
+                    if rPr is not None:
+                        rPr.set("sz", title_font_size)
             elif "EVOLUTION HEALTHCARE" in text:
                 for run in para.runs:
                     run.text = run.text.replace("EVOLUTION HEALTHCARE", client_name.upper())
