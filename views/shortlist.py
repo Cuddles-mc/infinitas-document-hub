@@ -7,6 +7,46 @@ from ui import page_header, step_flow, form_section
 QUAL_KEYWORDS = ["chartered", "ca ", "ca,", "cpa", "cima", "cfa", "iod", "member", "fellow", "certified", "registered", "accredited"]
 
 
+def _build_diff_html(original: str, corrected: str) -> str:
+    """Build HTML showing word-level differences between original and corrected text.
+
+    Deletions shown in red strikethrough, insertions in green bold.
+    Returns empty string if texts are identical.
+    """
+    import difflib
+
+    if original.strip() == corrected.strip():
+        return ""
+
+    orig_words = original.split()
+    corr_words = corrected.split()
+    sm = difflib.SequenceMatcher(None, orig_words, corr_words)
+
+    parts = []
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            parts.append(" ".join(orig_words[i1:i2]))
+        elif op == "replace":
+            old = " ".join(orig_words[i1:i2])
+            new = " ".join(corr_words[j1:j2])
+            parts.append(
+                f'<span style="background:#fee2e2;color:#991b1b;text-decoration:line-through;">{old}</span> '
+                f'<span style="background:#dcfce7;color:#166534;font-weight:600;">{new}</span>'
+            )
+        elif op == "delete":
+            old = " ".join(orig_words[i1:i2])
+            parts.append(
+                f'<span style="background:#fee2e2;color:#991b1b;text-decoration:line-through;">{old}</span>'
+            )
+        elif op == "insert":
+            new = " ".join(corr_words[j1:j2])
+            parts.append(
+                f'<span style="background:#dcfce7;color:#166534;font-weight:600;">{new}</span>'
+            )
+
+    return f'<div style="line-height:1.8;font-size:0.95rem;padding:0.75rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#fafafa;">{" ".join(parts)}</div>'
+
+
 def _split_edu_qual(combined: str) -> tuple[str, str]:
     """Split a combined education/qualifications string into separate fields.
 
@@ -471,22 +511,20 @@ def _render_candidate_editor(idx: int, cand: dict):
                         except Exception as e:
                             st.error(f"Proofreading failed: {e}")
 
-        # Show proofread result
+        # Show proofread result with highlighted changes
         proofread_key = f"proofread_result_{idx}"
         if proofread_key in st.session_state:
             corrected = st.session_state[proofread_key]
-            st.markdown("**Proofread version:**")
-            st.text_area(
-                "Corrected",
-                value=corrected,
-                height=200,
-                key=f"proofread_preview_{idx}",
-                label_visibility="collapsed",
-                disabled=True,
-            )
+            original = cand.get("notes", "")
+            diff_html = _build_diff_html(original, corrected)
+            if diff_html:
+                st.markdown("**Changes found:**")
+                st.markdown(diff_html, unsafe_allow_html=True)
+            else:
+                st.success("No changes needed.")
             col_accept, col_reject, _ = st.columns([1, 1, 2])
             with col_accept:
-                if st.button("Accept", key=f"accept_proof_{idx}", type="primary"):
+                if st.button("Accept changes", key=f"accept_proof_{idx}", type="primary"):
                     cand["notes"] = corrected
                     del st.session_state[proofread_key]
                     st.rerun()
