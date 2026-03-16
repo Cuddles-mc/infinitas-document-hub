@@ -56,7 +56,7 @@ PAGE_LABELS = {
 }
 
 # --- Sidebar ---
-st.sidebar.image(brand["logo_url"], use_container_width=True)
+st.sidebar.image(brand["logo_url"], width="stretch")
 st.sidebar.markdown(
     f'<p style="text-align:center; margin:0.5rem 0 0 0;">'
     f'<strong>{st.session_state.get("ms_user", "User")}</strong></p>',
@@ -85,7 +85,7 @@ if selected_key != st.session_state.current_page:
     st.rerun()
 
 st.sidebar.divider()
-if st.sidebar.button("Sign out", use_container_width=True):
+if st.sidebar.button("Sign out", width="stretch"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()

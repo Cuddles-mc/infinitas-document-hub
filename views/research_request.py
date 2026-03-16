@@ -244,7 +244,7 @@ def _render_form():
     st.markdown("")
     col_btn, _ = st.columns([1, 2])
     with col_btn:
-        submit = st.button("Submit Request", type="primary", use_container_width=True)
+        submit = st.button("Submit Request", type="primary", width="stretch")
 
     if submit:
         if not subject or not subject.strip():
@@ -276,7 +276,7 @@ def _render_status_table():
 
     col_title, col_refresh = st.columns([3, 1])
     with col_refresh:
-        if st.button("Refresh", use_container_width=True):
+        if st.button("Refresh", width="stretch"):
             st.rerun()
 
     rows = _fetch_requests()

@@ -47,7 +47,7 @@ def _render_form():
     st.markdown("")
     col_btn, col_space = st.columns([1, 2])
     with col_btn:
-        generate = st.button("Generate Reference", type="primary", use_container_width=True)
+        generate = st.button("Generate Reference", type="primary", width="stretch")
 
     if generate:
         if not candidate_name or not position or not referee_name:

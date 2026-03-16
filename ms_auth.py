@@ -89,7 +89,7 @@ def ms_login():
             )
             st.image(
                 "https://infinitas.co.nz/wp-content/uploads/2024/11/Infinitas-Logo-HRZ-2.svg",
-                use_container_width=True,
+                width="stretch",
             )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("")
@@ -101,7 +101,7 @@ def ms_login():
             st.link_button(
                 "Sign in with Microsoft",
                 auth_url,
-                use_container_width=True,
+                width="stretch",
             )
             st.markdown("")
     return False

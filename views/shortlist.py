@@ -141,7 +141,7 @@ def _render_upload():
         extract = st.button(
             "Extract candidate data",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not uploaded_files,
         )
 
@@ -291,7 +291,7 @@ def _render_review():
         generate = st.button(
             "Generate Shortlist PPTX",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
     if generate:

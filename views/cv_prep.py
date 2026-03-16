@@ -65,7 +65,7 @@ def _render_upload():
         go = st.button(
             "Generate redacted CVs",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not uploaded,
         )
 

@@ -125,7 +125,7 @@ def _render_form(user_email: str):
     st.markdown("")
     col_btn, _ = st.columns([1, 2])
     with col_btn:
-        generate = st.button("Generate Agreement", type="primary", key="ca_generate", use_container_width=True)
+        generate = st.button("Generate Agreement", type="primary", key="ca_generate", width="stretch")
 
     if generate:
         missing = []

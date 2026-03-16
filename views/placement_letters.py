@@ -91,7 +91,7 @@ def _render_form():
     st.markdown("")
     col_btn, _ = st.columns([1, 2])
     with col_btn:
-        generate = st.button("Generate Letters", type="primary", key="pl_generate", use_container_width=True)
+        generate = st.button("Generate Letters", type="primary", key="pl_generate", width="stretch")
 
     if generate:
         missing = []
@@ -224,7 +224,7 @@ def _render_results():
                     f"Placement Confirmation - {candidate}, {data['position']}",
                     f"Dear {client_first},\n\nPlease find attached the placement confirmation for {candidate} as {data['position']} at {company}.\n\nKind regards",
                 )
-                st.link_button("Email Client Letter", url, type="primary", use_container_width=True)
+                st.link_button("Email Client Letter", url, type="primary", width="stretch")
 
     if "candidate" in generated:
         with email_cols[1]:
@@ -235,7 +235,7 @@ def _render_results():
                     f"Congratulations - {data['position']} at {company}",
                     f"Dear {cand_first},\n\nCongratulations on your new role. Please find attached your placement confirmation for {data['position']} at {company}.\n\nKind regards",
                 )
-                st.link_button("Email Candidate Letter", url, type="primary", use_container_width=True)
+                st.link_button("Email Candidate Letter", url, type="primary", width="stretch")
 
 
 def _parse_spreadsheet(uploaded_xlsx):
