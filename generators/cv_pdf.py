@@ -1,4 +1,4 @@
-"""CV PDF generator.
+"""CV PDF generator — v2.
 
 Creates branded, redacted CV PDFs with an Infinitas cover page.
 Uses pymupdf (fitz) for proper PDF text redaction — preserves layout.
