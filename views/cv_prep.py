@@ -37,8 +37,27 @@ def _render_upload():
         key="cvp_upload",
     )
 
+    # Show name inputs for each uploaded file
+    cv_names = {}
     if uploaded:
-        st.caption(f"{len(uploaded)} file(s) selected")
+        form_section("Candidate Names")
+        st.caption("Enter the candidate name for each CV (auto-filled from filename)")
+        for i, f in enumerate(uploaded):
+            default_name = _name_from_filename(f.name)
+            cv_names[f.name] = st.text_input(
+                f.name,
+                value=default_name,
+                key=f"cvp_name_{i}",
+                label_visibility="collapsed",
+                placeholder=f"Name for {f.name}",
+            )
+
+    form_section("Options")
+    use_ai = st.checkbox(
+        "AI-enhanced redaction (slower but catches more — addresses, unusual formats)",
+        value=False,
+        key="cvp_use_ai",
+    )
 
     st.markdown("")
     col_btn, _ = st.columns([1, 2])
@@ -62,15 +81,11 @@ def _render_upload():
         progress = st.progress(0, text="Processing CVs...")
 
         for i, f in enumerate(uploaded):
-            progress.progress(i / len(uploaded), text=f"Processing {f.name}...")
+            cand_name = cv_names.get(f.name, _name_from_filename(f.name))
+            progress.progress(i / len(uploaded), text=f"Processing {cand_name}...")
 
             try:
                 cv_raw = f.read()
-
-                # Try to detect candidate name from the CV text
-                cand_name = _detect_name(cv_raw, f.name)
-                if not cand_name:
-                    cand_name = _name_from_filename(f.name)
 
                 from generators.cv_pdf import generate_cv_pdf
                 pdf_bytes = generate_cv_pdf(
@@ -78,6 +93,7 @@ def _render_upload():
                     client_name=client_name,
                     cv_file_bytes=cv_raw,
                     cv_filename=f.name,
+                    use_ai_redaction=use_ai,
                 )
                 pdf_name = f"CV of {cand_name} prepared for {client_name} by Infinitas.pdf"
                 pdfs[pdf_name] = pdf_bytes

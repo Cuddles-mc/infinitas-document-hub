@@ -179,6 +179,48 @@ def _redact_pdf_with_ai(pdf_bytes: bytes) -> bytes:
     return partially_redacted
 
 
+def _redact_docx_regex(docx_bytes: bytes) -> bytes:
+    """Redact a DOCX file using regex only (fast). Preserves formatting."""
+    from docx import Document
+
+    doc = Document(io.BytesIO(docx_bytes))
+    in_references = False
+
+    for para in doc.paragraphs:
+        text_lower = para.text.strip().lower().rstrip(":")
+        if text_lower in REFERENCES_HEADERS:
+            in_references = True
+        if in_references:
+            for run in para.runs:
+                run.text = ""
+            continue
+
+        for run in para.runs:
+            original = run.text
+            cleaned = EMAIL_RE.sub("", original)
+            cleaned = URL_RE.sub("", cleaned)
+            for match in PHONE_RE.finditer(cleaned):
+                digits = re.sub(r"\D", "", match.group())
+                if len(digits) >= 7:
+                    cleaned = cleaned.replace(match.group(), "")
+            cleaned = ADDRESS_RE.sub("", cleaned)
+            cleaned = re.sub(r"  +", " ", cleaned).strip()
+            if cleaned != original:
+                run.text = cleaned
+
+    for rel in list(doc.part.rels.values()):
+        if "hyperlink" in str(rel.reltype).lower():
+            try:
+                doc.part.rels.pop(rel.rId)
+            except Exception:
+                pass
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
 def _redact_docx_with_ai(docx_bytes: bytes) -> bytes:
     """Redact a DOCX file using AI + regex. Preserves formatting."""
     from docx import Document
@@ -260,24 +302,34 @@ def generate_cv_pdf(
     client_name: str,
     cv_file_bytes: bytes,
     cv_filename: str,
+    use_ai_redaction: bool = False,
 ) -> bytes:
     """Generate a branded, redacted CV PDF.
 
     For PDF: pymupdf redaction (preserves original layout).
-    For DOCX: AI + regex redaction on document, convert to PDF via MS Graph.
+    For DOCX: regex (+ optional AI) redaction, convert to PDF via MS Graph.
     Both get a branded cover page prepended.
+
+    Args:
+        use_ai_redaction: If True, uses Claude API for deeper PII detection
+            (slower ~10s per CV). If False, regex-only (instant).
     """
     cover_pdf = _create_cover_page(candidate_name, client_name)
     is_docx = cv_filename.lower().endswith(".docx")
 
     if is_docx:
-        redacted_docx = _redact_docx_with_ai(cv_file_bytes)
+        if use_ai_redaction:
+            redacted_docx = _redact_docx_with_ai(cv_file_bytes)
+        else:
+            redacted_docx = _redact_docx_regex(cv_file_bytes)
         from ui import convert_docx_to_pdf
         cv_pdf = convert_docx_to_pdf(redacted_docx, cv_filename)
         if cv_pdf is None:
             raise RuntimeError("DOCX to PDF conversion failed. Check MS Graph auth.")
     else:
-        # PDF — redact in-place, preserving layout
-        cv_pdf = _redact_pdf_with_ai(cv_file_bytes)
+        if use_ai_redaction:
+            cv_pdf = _redact_pdf_with_ai(cv_file_bytes)
+        else:
+            cv_pdf = _redact_pdf(cv_file_bytes)
 
     return _merge_pdfs(cover_pdf, cv_pdf)
