@@ -166,20 +166,62 @@ def _clone_slide(prs: Presentation, slide_index: int) -> None:
         sp.getparent().remove(sp)
 
 
+def _strip_theme_from_rPr(rPr, font_name: str):
+    """Ensure rPr uses an explicit typeface with no theme override."""
+    if rPr is None:
+        return
+    for tag in ("a:latin", "a:ea", "a:cs"):
+        el = rPr.find(qn(tag))
+        if el is not None:
+            el.set("typeface", font_name)
+            if "theme" in el.attrib:
+                del el.attrib["theme"]
+        elif tag == "a:latin":
+            el = etree.SubElement(rPr, qn(tag))
+            el.set("typeface", font_name)
+
+
+def _fix_frame_fonts(tf, font_name: str):
+    """Set font on all runs + paragraph defaults, stripping theme refs."""
+    for para in tf.paragraphs:
+        p_elem = para._p
+        for run in para.runs:
+            run.font.name = font_name
+            rPr = run._r.find(qn("a:rPr"))
+            _strip_theme_from_rPr(rPr, font_name)
+        for tag in ("a:defRPr", "a:endParaRPr"):
+            rPr = p_elem.find(qn(tag))
+            if rPr is not None:
+                _strip_theme_from_rPr(rPr, font_name)
+
+
+def _strip_table_style(tbl_elem):
+    """Remove table style reference so it can't re-impose theme fonts."""
+    tblPr = tbl_elem.find(qn("a:tblPr"))
+    if tblPr is not None:
+        for ts in tblPr.findall(qn("a:tblStyle")):
+            tblPr.remove(ts)
+
+
 def _set_all_fonts(prs: Presentation, font_name: str):
-    """Set all text in the presentation to the specified font."""
+    """Set all text to the specified font, stripping theme references.
+
+    Theme font refs (e.g. theme='minor') on run properties and table styles
+    prevent users from changing fonts in PowerPoint after export.
+    """
     for slide in prs.slides:
         for shape in slide.shapes:
             if shape.has_text_frame:
-                for para in shape.text_frame.paragraphs:
-                    for run in para.runs:
-                        run.font.name = font_name
+                _fix_frame_fonts(shape.text_frame, font_name)
             if shape.has_table:
+                _strip_table_style(shape.table._tbl)
                 for row in shape.table.rows:
                     for cell in row.cells:
-                        for para in cell.text_frame.paragraphs:
-                            for run in para.runs:
-                                run.font.name = font_name
+                        _fix_frame_fonts(cell.text_frame, font_name)
+            if hasattr(shape, "shapes"):
+                for child in shape.shapes:
+                    if child.has_text_frame:
+                        _fix_frame_fonts(child.text_frame, font_name)
 
 
 # ---------------------------------------------------------------------------
