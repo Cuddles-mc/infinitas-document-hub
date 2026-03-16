@@ -23,8 +23,8 @@ def _base_url():
     return f"{st.secrets['SUPABASE_URL']}/rest/v1/wiki_requests"
 
 
-def _insert_request(data: dict) -> bool:
-    """Insert a wiki_request row. Returns True on success."""
+def _insert_request(data: dict) -> tuple[bool, str]:
+    """Insert a wiki_request row. Returns (success, error_message)."""
     try:
         resp = http_requests.post(
             _base_url(),
@@ -32,9 +32,11 @@ def _insert_request(data: dict) -> bool:
             json=data,
             timeout=10,
         )
-        return resp.status_code in (200, 201)
-    except Exception:
-        return False
+        if resp.status_code in (200, 201):
+            return True, ""
+        return False, f"HTTP {resp.status_code}: {resp.text}"
+    except Exception as e:
+        return False, str(e)
 
 
 def _fetch_requests() -> list[dict]:
@@ -261,11 +263,12 @@ def _render_form():
             "status": "pending",
         }
 
-        if _insert_request(row):
+        ok, err = _insert_request(row)
+        if ok:
             st.success(f"Research request submitted: **{subject}** ({type_label})")
             st.rerun()
         else:
-            st.error("Failed to submit request. Please try again.")
+            st.error(f"Failed to submit request: {err}")
 
 
 def _render_status_table():
