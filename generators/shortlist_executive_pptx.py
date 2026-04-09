@@ -224,6 +224,99 @@ def _set_all_fonts(prs: Presentation, font_name: str):
                         _fix_frame_fonts(child.text_frame, font_name)
 
 
+def _fill_data_slide(slide, cand: dict, placeholder_bytes: bytes | None):
+    """Fill an executive shortlist data slide with candidate info."""
+    career = [c for c in cand.get("career", []) if c.get("include", True)]
+    photo_bytes = cand.get("photo") or placeholder_bytes
+
+    for shape in slide.shapes:
+        # Candidate name
+        if shape.name == "TextBox 6":
+            for para in shape.text_frame.paragraphs:
+                for i, run in enumerate(para.runs):
+                    run.text = cand["name"] if i == 0 else ""
+
+        # Career history table
+        elif shape.name == "Table 7":
+            table = shape.table
+            tbl = table._tbl
+
+            template_row_xml = None
+            if len(tbl.tr_lst) > 1:
+                template_row_xml = deepcopy(tbl.tr_lst[1])
+                for tc in template_row_xml.findall(qn("a:tc")):
+                    for r in tc.iter(qn("a:r")):
+                        rPr = r.find(qn("a:rPr"))
+                        if rPr is not None:
+                            rPr.set("sz", "700")
+
+            while len(tbl.tr_lst) > 1:
+                tbl.remove(tbl.tr_lst[-1])
+
+            if template_row_xml is not None:
+                prev_company = None
+                for entry in career:
+                    new_row = deepcopy(template_row_xml)
+                    company = entry.get("company", "")
+                    title = entry.get("title", "")
+                    start = entry.get("start_date", "")
+                    end = entry.get("end_date", "")
+                    duration = _calc_duration(start, end)
+
+                    display_company = "" if company == prev_company else company
+                    prev_company = company
+
+                    values = [display_company, title, start, end, duration]
+                    for col_i, val in enumerate(values):
+                        _set_row_cell_text(new_row, col_i, val)
+                    tbl.append(new_row)
+
+        # Details table
+        elif shape.name == "Table 2":
+            table = shape.table
+            tbl_detail = table._tbl
+
+            show_edu = cand.get("show_education", True)
+            show_quals = cand.get("show_prof_quals", True)
+            edu = cand.get("education", "")
+            quals = cand.get("professional_qualifications", "")
+
+            detail_data = [
+                cand.get("notice_period", "") or "Not disclosed",
+                cand.get("salary_expectation", "") or "Not disclosed",
+                edu,
+                quals,
+            ]
+            for row_i in range(min(4, len(table.rows))):
+                _set_detail_cell(table.cell(row_i, 1), detail_data[row_i])
+
+            if not show_quals and len(tbl_detail.tr_lst) >= 4:
+                tbl_detail.remove(tbl_detail.tr_lst[3])
+            if not show_edu and len(tbl_detail.tr_lst) >= 3:
+                tbl_detail.remove(tbl_detail.tr_lst[2])
+
+        # Replace candidate photo
+        elif shape.shape_type == 13 and photo_bytes:
+            _replace_picture(slide, shape, photo_bytes)
+
+
+def _fill_notes_slide(slide, cand: dict):
+    """Fill an executive shortlist notes slide."""
+    for shape in slide.shapes:
+        if shape.name == "Rectangle: Rounded Corners 10":
+            if shape.has_text_frame:
+                tf = shape.text_frame
+                notes_text = LOREM if cand.get("use_lorem", False) else cand.get("notes", "") or LOREM
+                for p in tf.paragraphs:
+                    for r in p.runs:
+                        r.text = ""
+                done = False
+                for p in tf.paragraphs:
+                    if p.runs and not done:
+                        p.runs[0].text = notes_text
+                        done = True
+
+
 # ---------------------------------------------------------------------------
 # Main generator
 # ---------------------------------------------------------------------------
@@ -303,95 +396,8 @@ def generate_executive_shortlist(
         notes_slide_idx = 2 + cand_idx * 2
         data_slide = prs.slides[data_slide_idx]
         notes_slide = prs.slides[notes_slide_idx]
-
-        career = [c for c in cand.get("career", []) if c.get("include", True)]
-        photo_bytes = cand.get("photo") or placeholder_bytes
-
-        # --- Data slide ---
-        for shape in data_slide.shapes:
-            # Candidate name
-            if shape.name == "TextBox 6":
-                for para in shape.text_frame.paragraphs:
-                    for i, run in enumerate(para.runs):
-                        run.text = cand["name"] if i == 0 else ""
-
-            # Career history table
-            elif shape.name == "Table 7":
-                table = shape.table
-                tbl = table._tbl
-
-                template_row_xml = None
-                if len(tbl.tr_lst) > 1:
-                    template_row_xml = deepcopy(tbl.tr_lst[1])
-                    for tc in template_row_xml.findall(qn("a:tc")):
-                        for r in tc.iter(qn("a:r")):
-                            rPr = r.find(qn("a:rPr"))
-                            if rPr is not None:
-                                rPr.set("sz", "700")
-
-                while len(tbl.tr_lst) > 1:
-                    tbl.remove(tbl.tr_lst[-1])
-
-                if template_row_xml is not None:
-                    prev_company = None
-                    for entry in career:
-                        new_row = deepcopy(template_row_xml)
-                        company = entry.get("company", "")
-                        title = entry.get("title", "")
-                        start = entry.get("start_date", "")
-                        end = entry.get("end_date", "")
-                        duration = _calc_duration(start, end)
-
-                        display_company = "" if company == prev_company else company
-                        prev_company = company
-
-                        values = [display_company, title, start, end, duration]
-                        for col_i, val in enumerate(values):
-                            _set_row_cell_text(new_row, col_i, val)
-                        tbl.append(new_row)
-
-            # Details table
-            elif shape.name == "Table 2":
-                table = shape.table
-                tbl_detail = table._tbl
-
-                show_edu = cand.get("show_education", True)
-                show_quals = cand.get("show_prof_quals", True)
-                edu = cand.get("education", "")
-                quals = cand.get("professional_qualifications", "")
-
-                detail_data = [
-                    cand.get("notice_period", "") or "Not disclosed",
-                    cand.get("salary_expectation", "") or "Not disclosed",
-                    edu,
-                    quals,
-                ]
-                for row_i in range(min(4, len(table.rows))):
-                    _set_detail_cell(table.cell(row_i, 1), detail_data[row_i])
-
-                if not show_quals and len(tbl_detail.tr_lst) >= 4:
-                    tbl_detail.remove(tbl_detail.tr_lst[3])
-                if not show_edu and len(tbl_detail.tr_lst) >= 3:
-                    tbl_detail.remove(tbl_detail.tr_lst[2])
-
-            # Replace candidate photo
-            elif shape.shape_type == 13 and photo_bytes:
-                _replace_picture(data_slide, shape, photo_bytes)
-
-        # --- Notes slide ---
-        for shape in notes_slide.shapes:
-            if shape.name == "Rectangle: Rounded Corners 10":
-                if shape.has_text_frame:
-                    tf = shape.text_frame
-                    notes_text = LOREM if cand.get("use_lorem", False) else cand.get("notes", "") or LOREM
-                    for p in tf.paragraphs:
-                        for r in p.runs:
-                            r.text = ""
-                    done = False
-                    for p in tf.paragraphs:
-                        if p.runs and not done:
-                            p.runs[0].text = notes_text
-                            done = True
+        _fill_data_slide(data_slide, cand, placeholder_bytes)
+        _fill_notes_slide(notes_slide, cand)
 
     # --- Remove extra candidate slide pairs from the end ---
     total_needed = 1 + needed * 2  # cover + pairs
@@ -404,6 +410,36 @@ def generate_executive_shortlist(
     _set_all_fonts(prs, FONT_NAME)
 
     # --- Save ---
+    buf = io.BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def append_candidates(existing_pptx_bytes: bytes, candidates: list[dict]) -> bytes:
+    """Append new candidates to an existing executive shortlist PPTX.
+
+    Opens the existing file, clones the last candidate slide pair for each
+    new candidate, fills them, and returns the updated PPTX bytes.
+    Existing slides are not modified.
+    """
+    prs = Presentation(io.BytesIO(existing_pptx_bytes))
+    placeholder_bytes = PLACEHOLDER_PATH.read_bytes() if PLACEHOLDER_PATH.exists() else None
+
+    total = len(prs.slides)
+    source_data_idx = total - 2
+    source_notes_idx = total - 1
+
+    for cand in candidates:
+        _clone_slide(prs, source_data_idx)
+        _clone_slide(prs, source_notes_idx)
+        new_data_slide = prs.slides[len(prs.slides) - 2]
+        new_notes_slide = prs.slides[len(prs.slides) - 1]
+        _fill_data_slide(new_data_slide, cand, placeholder_bytes)
+        _fill_notes_slide(new_notes_slide, cand)
+
+    _set_all_fonts(prs, FONT_NAME)
+
     buf = io.BytesIO()
     prs.save(buf)
     buf.seek(0)

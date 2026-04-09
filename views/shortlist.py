@@ -1,5 +1,6 @@
 """Shortlist Generator — upload CVs, review extracted data, download branded PPTX."""
 
+import io
 import streamlit as st
 from ui import page_header, step_flow, form_section
 
@@ -92,6 +93,21 @@ def render():
 # Step 1: Upload
 # ---------------------------------------------------------------------------
 def _render_upload():
+    mode = st.radio(
+        "What would you like to do?",
+        ["Create new shortlist", "Add to existing shortlist"],
+        key="sl_mode",
+        horizontal=True,
+    )
+    st.markdown("")
+
+    if mode == "Add to existing shortlist":
+        _render_upload_append()
+    else:
+        _render_upload_new()
+
+
+def _render_upload_new():
     form_section("Assignment Details")
     col1, col2 = st.columns(2)
     with col1:
@@ -197,6 +213,84 @@ def _render_upload():
             if template_choice.startswith("Executive"):
                 st.session_state.sl_prepared_by = prepared_by
                 st.session_state.sl_prepared_date = prepared_date
+            st.rerun()
+        else:
+            st.error("No candidates could be extracted.")
+
+
+def _render_upload_append():
+    """Upload flow for adding candidates to an existing shortlist."""
+    form_section("Existing Shortlist")
+    existing_file = st.file_uploader(
+        "Upload your existing shortlist PPTX",
+        type=["pptx"],
+        key="sl_existing_pptx",
+    )
+
+    form_section("New CVs")
+    uploaded_files = st.file_uploader(
+        "Upload new candidate CVs (PDF or DOCX)",
+        type=["pdf", "docx"],
+        accept_multiple_files=True,
+        key="sl_new_cv_upload",
+    )
+
+    if uploaded_files:
+        st.caption(f"{len(uploaded_files)} file(s) selected")
+
+    st.markdown("")
+    col_btn, _ = st.columns([1, 2])
+    with col_btn:
+        extract = st.button(
+            "Extract candidate data",
+            type="primary",
+            width="stretch",
+            disabled=not uploaded_files or not existing_file,
+        )
+
+    if extract:
+        existing_bytes = existing_file.read()
+
+        # Detect template type from slide dimensions
+        from pptx import Presentation as PptxPresentation
+        prs = PptxPresentation(io.BytesIO(existing_bytes))
+        is_landscape = prs.slide_width > prs.slide_height
+        template_type = "executive" if is_landscape else "standard"
+
+        candidates = []
+        progress = st.progress(0, text="Extracting CVs...")
+
+        for i, f in enumerate(uploaded_files):
+            progress.progress(i / len(uploaded_files), text=f"Extracting {f.name}...")
+            try:
+                cv_raw = f.read()
+                f.seek(0)
+                cv_text = _extract_text_from_bytes(cv_raw, f.name)
+                if not cv_text.strip():
+                    st.warning(f"Could not extract text from {f.name}")
+                    continue
+                from ai import extract_cv_data
+                data = extract_cv_data(cv_text)
+                for entry in data.get("career", []):
+                    entry["include"] = True
+                data["source_file"] = f.name
+                data["cv_bytes"] = cv_raw
+                data["notes"] = ""
+                data["use_lorem"] = True
+                candidates.append(data)
+            except Exception as e:
+                st.error(f"Error processing {f.name}: {e}")
+
+        progress.progress(1.0, text="Done!")
+
+        if candidates:
+            st.session_state.sl_candidates = candidates
+            st.session_state.sl_existing_pptx = existing_bytes
+            st.session_state.sl_existing_filename = existing_file.name
+            st.session_state.sl_template = template_type
+            st.session_state.sl_append_mode = True
+            st.session_state.sl_client_name = ""
+            st.session_state.sl_role_title = ""
             st.rerun()
         else:
             st.error("No candidates could be extracted.")
@@ -319,13 +413,18 @@ def _parse_notes_docx(uploaded_file, candidates: list[dict]) -> dict[int, str]:
 def _render_review():
     # Back button
     if st.button("< Back to upload"):
-        del st.session_state["sl_candidates"]
+        for key in ("sl_candidates", "sl_existing_pptx", "sl_existing_filename", "sl_append_mode"):
+            st.session_state.pop(key, None)
         st.rerun()
 
-    client_name = st.session_state.sl_client_name
-    role_title = st.session_state.sl_role_title
+    client_name = st.session_state.get("sl_client_name", "")
+    role_title = st.session_state.get("sl_role_title", "")
     template_label = "Executive (landscape)" if st.session_state.get("sl_template") == "executive" else "Standard"
-    st.info(f"**{role_title}** at **{client_name}** — {len(st.session_state.sl_candidates)} candidate(s) — {template_label}")
+    if st.session_state.get("sl_append_mode"):
+        existing_name = st.session_state.get("sl_existing_filename", "existing shortlist")
+        st.info(f"Adding {len(st.session_state.sl_candidates)} new candidate(s) to **{existing_name}** — {template_label}")
+    else:
+        st.info(f"**{role_title}** at **{client_name}** — {len(st.session_state.sl_candidates)} candidate(s) — {template_label}")
 
     candidates = st.session_state.sl_candidates
 
@@ -390,24 +489,37 @@ def _render_review():
 
         with st.spinner("Generating shortlist PPTX..."):
             try:
+                append_mode = st.session_state.get("sl_append_mode", False)
                 use_executive = st.session_state.get("sl_template") == "executive"
-                if use_executive:
-                    from generators.shortlist_executive_pptx import generate_executive_shortlist
-                    pptx_bytes = generate_executive_shortlist(
-                        client_name=client_name,
-                        role_title=role_title,
-                        candidates=valid_candidates,
-                        prepared_by=st.session_state.get("sl_prepared_by", ""),
-                        prepared_date=st.session_state.get("sl_prepared_date", ""),
-                    )
+
+                if append_mode:
+                    existing_bytes = st.session_state.sl_existing_pptx
+                    if use_executive:
+                        from generators.shortlist_executive_pptx import append_candidates
+                        pptx_bytes = append_candidates(existing_bytes, valid_candidates)
+                    else:
+                        from generators.shortlist_pptx import append_candidates
+                        pptx_bytes = append_candidates(existing_bytes, valid_candidates)
+                    filename = st.session_state.get("sl_existing_filename", "shortlist.pptx")
                 else:
-                    from generators.shortlist_pptx import generate_shortlist
-                    pptx_bytes = generate_shortlist(
-                        client_name=client_name,
-                        role_title=role_title,
-                        candidates=valid_candidates,
-                    )
-                filename = f"{role_title} Shortlist prepared for {client_name} by Infinitas.pptx"
+                    if use_executive:
+                        from generators.shortlist_executive_pptx import generate_executive_shortlist
+                        pptx_bytes = generate_executive_shortlist(
+                            client_name=client_name,
+                            role_title=role_title,
+                            candidates=valid_candidates,
+                            prepared_by=st.session_state.get("sl_prepared_by", ""),
+                            prepared_date=st.session_state.get("sl_prepared_date", ""),
+                        )
+                    else:
+                        from generators.shortlist_pptx import generate_shortlist
+                        pptx_bytes = generate_shortlist(
+                            client_name=client_name,
+                            role_title=role_title,
+                            candidates=valid_candidates,
+                        )
+                    filename = f"{role_title} Shortlist prepared for {client_name} by Infinitas.pptx"
+
                 st.session_state.sl_pptx_bytes = pptx_bytes
                 st.session_state.sl_pptx_filename = filename
             except Exception as e:

@@ -46,6 +46,7 @@ def navigate(page_key: str):
 # --- Page Registry ---
 PAGE_LABELS = {
     "home": "Home",
+    # "chat": "Research Assistant",  # Archived — revisit with proper Next.js frontend
     "shortlist": "Shortlist Generator",
     # "cv_prep": "CV Preparation",
     "reference_check": "Reference Check",
