@@ -253,10 +253,19 @@ def _fill_candidate_slide(slide, cand: dict, placeholder_bytes: bytes | None):
             if len(tbl.tr_lst) > 1:
                 template_row_xml = deepcopy(tbl.tr_lst[1])
                 for tc in template_row_xml.findall(qn("a:tc")):
+                    for p in tc.iter(qn("a:p")):
+                        pPr = p.find(qn("a:pPr"))
+                        if pPr is None:
+                            pPr = etree.SubElement(p, qn("a:pPr"))
+                            p.insert(0, pPr)
+                        defRPr = pPr.find(qn("a:defRPr"))
+                        if defRPr is None:
+                            defRPr = etree.SubElement(pPr, qn("a:defRPr"))
+                        defRPr.set("sz", "900")
                     for r in tc.iter(qn("a:r")):
                         rPr = r.find(qn("a:rPr"))
-                        if rPr is not None:
-                            rPr.set("sz", "700")
+                        if rPr is not None and "sz" in rPr.attrib:
+                            del rPr.attrib["sz"]
 
             while len(tbl.tr_lst) > 1:
                 tbl.remove(tbl.tr_lst[-1])

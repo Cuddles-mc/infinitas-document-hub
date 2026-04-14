@@ -541,6 +541,20 @@ def _render_candidate_editor(idx: int, cand: dict):
         key=f"cand_name_{idx}",
     )
 
+    # Photo
+    form_section("Candidate Photo")
+    photo_file = st.file_uploader(
+        "Upload photo (optional — placeholder used if empty)",
+        type=["png", "jpg", "jpeg"],
+        key=f"cand_photo_{idx}",
+    )
+    if photo_file:
+        cand["photo"] = photo_file.read()
+        st.image(cand["photo"], width=150)
+    else:
+        cand["photo"] = None
+        st.caption("No photo uploaded — placeholder will be used. You can swap it in PowerPoint later.")
+
     # Career history with checkboxes
     form_section("Career History")
 
@@ -610,73 +624,58 @@ def _render_candidate_editor(idx: int, cand: dict):
         cand["show_education"] = bool(edu_split.strip())
         cand["show_prof_quals"] = bool(qual_split.strip())
 
-    # Education
-    form_section("Education")
+    # Details — mirrors the PPTX Details table row order
+    form_section("Details")
+
+    # Notice period
+    cand["notice_period"] = st.text_input(
+        "Notice period",
+        value=cand.get("notice_period", ""),
+        key=f"cand_notice_{idx}",
+        placeholder="e.g. Available immediately, 4 weeks",
+    )
+
+    # Salary expectation
+    cand["salary_expectation"] = st.text_input(
+        "Salary expectation",
+        value=cand.get("salary_expectation", ""),
+        key=f"cand_salary_{idx}",
+        placeholder="e.g. $250,000 - $280,000",
+    )
+
+    # Education (with Include toggle)
     col_edu, col_edu_check = st.columns([4, 1])
     with col_edu:
         cand["education"] = st.text_input(
             "Education",
             value=cand.get("education", ""),
             key=f"cand_edu_{idx}",
-            label_visibility="collapsed",
             placeholder="e.g. Bachelor of Commerce, University of Auckland",
         )
     with col_edu_check:
+        st.markdown("<div style='height:1.85rem'></div>", unsafe_allow_html=True)
         cand["show_education"] = st.checkbox(
             "Include",
             value=cand.get("show_education", bool(cand.get("education", "").strip())),
             key=f"cand_show_edu_{idx}",
         )
 
-    # Professional Qualifications
-    form_section("Professional Qualifications")
+    # Professional Qualifications (with Include toggle)
     col_qual, col_qual_check = st.columns([4, 1])
     with col_qual:
         cand["professional_qualifications"] = st.text_input(
             "Professional qualifications",
             value=cand.get("professional_qualifications", ""),
             key=f"cand_quals_{idx}",
-            label_visibility="collapsed",
             placeholder="e.g. Chartered Accountant (CA), CAANZ",
         )
     with col_qual_check:
+        st.markdown("<div style='height:1.85rem'></div>", unsafe_allow_html=True)
         cand["show_prof_quals"] = st.checkbox(
             "Include",
             value=cand.get("show_prof_quals", bool(cand.get("professional_qualifications", "").strip())),
             key=f"cand_show_quals_{idx}",
         )
-
-    # Details
-    form_section("Details")
-    col1, col2 = st.columns(2)
-    with col1:
-        cand["notice_period"] = st.text_input(
-            "Notice period",
-            value=cand.get("notice_period", ""),
-            key=f"cand_notice_{idx}",
-            placeholder="e.g. Available immediately, 4 weeks",
-        )
-    with col2:
-        cand["salary_expectation"] = st.text_input(
-            "Salary expectation",
-            value=cand.get("salary_expectation", ""),
-            key=f"cand_salary_{idx}",
-            placeholder="e.g. $250,000 - $280,000",
-        )
-
-    # Photo
-    form_section("Candidate Photo")
-    photo_file = st.file_uploader(
-        "Upload photo (optional — placeholder used if empty)",
-        type=["png", "jpg", "jpeg"],
-        key=f"cand_photo_{idx}",
-    )
-    if photo_file:
-        cand["photo"] = photo_file.read()
-        st.image(cand["photo"], width=150)
-    else:
-        cand["photo"] = None
-        st.caption("No photo uploaded — placeholder will be used. You can swap it in PowerPoint later.")
 
     # Notes
     form_section("Consultant Notes")
