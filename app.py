@@ -51,6 +51,7 @@ PAGE_LABELS = {
     # "cv_prep": "CV Preparation",
     "reference_check": "Reference Check",
     "placement_letters": "Placement Letters",
+    "cv_profiles": "CV Profiles",
     # "terms_conditions": "Terms & Conditions",
     # "contractor_agreement": "Contractor Agreement",
 }
@@ -111,6 +112,10 @@ elif page == "reference_check":
 
 elif page == "placement_letters":
     from views.placement_letters import render
+    render()
+
+elif page == "cv_profiles":
+    from views.cv_profiles import render
     render()
 
 elif page == "terms_conditions":
