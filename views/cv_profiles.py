@@ -84,16 +84,34 @@ def render():
 
 
 def _build_profiles(candidates: list[dict], company: str):
+    items = [
+        {
+            "name": c["name"],
+            "cv_bytes": c["file"].getvalue(),
+            "cv_filename": c["file"].name,
+        }
+        for c in candidates
+    ]
+    st.session_state.cvp_results = build_profiles_from_items(items, company)
+
+
+def build_profiles_from_items(items: list[dict], company: str) -> dict:
+    """Reusable builder. Each item: {"name", "cv_bytes", "cv_filename"}.
+
+    Returns {"files": {filename: bytes}, "errors": [str]}. Handles PDF and DOCX
+    candidate CVs (DOCX is converted to PDF via Graph before merge).
+    """
     from generators.cv_cover import generate_cover_docx
     from ms_auth import convert_docx_to_pdf_graph
 
     results = {"files": {}, "errors": []}
     progress = st.progress(0.0, text="Building CV profiles...")
 
-    total = len(candidates)
-    for i, c in enumerate(candidates):
-        name = c["name"]
-        file_obj = c["file"]
+    total = len(items)
+    for i, item in enumerate(items):
+        name = item["name"]
+        cv_bytes = item["cv_bytes"]
+        cv_filename = item.get("cv_filename", "")
         label = f"{i + 1}/{total}: {name}"
         progress.progress(i / total, text=f"{label} — generating cover...")
 
@@ -113,9 +131,22 @@ def _build_profiles(candidates: list[dict], company: str):
             )
             continue
 
+        # If the candidate CV is DOCX, convert it to PDF first
+        cv_pdf_bytes = cv_bytes
+        if cv_filename.lower().endswith(".docx"):
+            progress.progress((i + 0.5) / total, text=f"{label} — converting CV to PDF...")
+            cv_pdf_bytes = convert_docx_to_pdf_graph(
+                cv_bytes, filename=f"CV - {_safe(name)}.docx"
+            )
+            if not cv_pdf_bytes:
+                results["errors"].append(
+                    f"{name}: CV DOCX→PDF conversion failed (check Microsoft sign-in)."
+                )
+                continue
+
         progress.progress((i + 0.66) / total, text=f"{label} — merging with CV...")
         try:
-            merged = _merge_pdfs([cover_pdf, file_obj.getvalue()])
+            merged = _merge_pdfs([cover_pdf, cv_pdf_bytes])
         except Exception as e:
             results["errors"].append(f"{name}: merge failed — {e}")
             continue
@@ -126,7 +157,7 @@ def _build_profiles(candidates: list[dict], company: str):
     progress.progress(1.0, text="Done")
     progress.empty()
 
-    st.session_state.cvp_results = results
+    return results
 
 
 def _render_results():

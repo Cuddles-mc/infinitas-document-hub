@@ -768,6 +768,9 @@ def _render_download():
     )
     st.caption("Fully editable — adjust fonts, layout, and content in PowerPoint.")
 
+    # CV Profiles — reuse already-uploaded CVs to build branded cover + CV PDFs
+    _render_cv_profiles_section(client_name, candidates)
+
     # Start over
     st.divider()
     if st.button("Create another shortlist"):
@@ -775,3 +778,78 @@ def _render_download():
             if key.startswith("sl_") or key.startswith("cand_") or key.startswith("career_") or key.startswith("proofread"):
                 del st.session_state[key]
         st.rerun()
+
+
+def _render_cv_profiles_section(client_name: str, candidates: list[dict]):
+    """Reuse the CVs already uploaded for the shortlist to build branded CV profile PDFs."""
+    import zipfile
+
+    form_section("CV Profiles (branded cover + CV)")
+
+    eligible = [c for c in candidates if c.get("cv_bytes") and c.get("name", "").strip()]
+    if not eligible:
+        st.caption("No CVs available — manual entries can't be turned into CV profiles.")
+        return
+
+    st.caption(
+        f"Reuses the {len(eligible)} CV(s) already uploaded above. "
+        f"Each candidate gets a branded cover page (\"CV of {{name}} prepared for {client_name}\") "
+        f"merged with their CV into one PDF."
+    )
+
+    if not client_name.strip():
+        st.warning("Client name is empty — set it in step 1 to enable CV Profiles.")
+        return
+
+    if st.button("Create CV Profiles", type="primary", key="sl_cvp_build"):
+        from views.cv_profiles import build_profiles_from_items
+
+        items = [
+            {
+                "name": c["name"].strip(),
+                "cv_bytes": c["cv_bytes"],
+                "cv_filename": c.get("source_file", ""),
+            }
+            for c in eligible
+        ]
+        st.session_state.sl_cvp_results = build_profiles_from_items(items, client_name.strip())
+        st.rerun()
+
+    results = st.session_state.get("sl_cvp_results")
+    if not results:
+        return
+
+    files = results.get("files", {})
+    errors = results.get("errors", [])
+
+    for err in errors:
+        st.error(err)
+
+    if not files:
+        st.warning("No CV profiles were produced.")
+        return
+
+    st.success(f"Built {len(files)} CV profile{'s' if len(files) != 1 else ''}.")
+
+    for fname, fbytes in files.items():
+        st.download_button(
+            label=f"Download {fname}",
+            data=fbytes,
+            file_name=fname,
+            mime="application/pdf",
+            key=f"sl_cvp_dl_{fname}",
+        )
+
+    if len(files) > 1:
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for fname, fbytes in files.items():
+                zf.writestr(fname, fbytes)
+        st.download_button(
+            label="Download all CV profiles (.zip)",
+            data=zip_buf.getvalue(),
+            file_name=f"CV Profiles - {client_name}.zip",
+            mime="application/zip",
+            type="primary",
+            key="sl_cvp_dl_zip",
+        )
