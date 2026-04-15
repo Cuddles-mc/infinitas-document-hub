@@ -109,6 +109,17 @@ def _render_upload():
 
 def _render_upload_new():
     form_section("Assignment Details")
+    st.markdown(
+        """
+        <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:0.75rem 1rem;
+                    border-radius:0.375rem;margin-bottom:0.5rem;font-size:0.9rem;color:#78350f;">
+          <strong>⚠ Double-check the client name.</strong> It appears on the shortlist title slide
+          and — if you generate CV Profiles afterwards — on <em>every</em> cover page and output
+          filename. Spelling, capitalisation, and "Limited" vs "Ltd" all flow through to the client.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     col1, col2 = st.columns(2)
     with col1:
         client_name = st.text_input("Client name *", key="sl_client_name_input")

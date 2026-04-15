@@ -24,12 +24,25 @@ def render():
     )
 
     form_section("Client Company")
+    st.markdown(
+        """
+        <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:0.75rem 1rem;
+                    border-radius:0.375rem;margin-bottom:0.5rem;font-size:0.9rem;color:#78350f;">
+          <strong>⚠ Double-check this name.</strong> It appears on <em>every</em> cover page
+          and in <em>every</em> output filename. Spelling, capitalisation, and "Limited" vs
+          "Ltd" all flow straight through to the client.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     company = st.text_input(
-        "Client company name",
+        "Client company name *",
         key="cvp_company",
         placeholder="Acme Holdings Limited",
-        help="Used on every cover page and in the output filename.",
+        help="Used on every cover page and in the output filename. Must be exact.",
     )
+    if company and company.strip():
+        st.caption(f"Will appear as: **CV of [Candidate] prepared for {company.strip()}.pdf**")
 
     form_section("Candidate CVs")
     st.caption("Upload one PDF per candidate. You can remove files with the X next to each one.")
