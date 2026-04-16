@@ -143,6 +143,20 @@ def _set_detail_cell(cell, text: str):
             p_elem.append(r_elem)
 
 
+def _strip_italic_from_cell(cell):
+    """Remove italic formatting from all runs in a cell."""
+    for para in cell.text_frame.paragraphs:
+        p_elem = para._p
+        for r in p_elem.iter(qn("a:r")):
+            rPr = r.find(qn("a:rPr"))
+            if rPr is not None and rPr.get("i") is not None:
+                del rPr.attrib["i"]
+        for tag in ("a:defRPr", "a:endParaRPr"):
+            rPr = p_elem.find(qn(tag))
+            if rPr is not None and rPr.get("i") is not None:
+                del rPr.attrib["i"]
+
+
 def _replace_picture(slide, old_shape, new_image_bytes: bytes):
     """Replace a Picture shape's image, keeping position and size."""
     left, top = old_shape.left, old_shape.top
@@ -307,6 +321,11 @@ def _fill_candidate_slide(slide, cand: dict, placeholder_bytes: bytes | None):
             for row_i in range(min(4, len(table.rows))):
                 _set_detail_cell(table.cell(row_i, 1), detail_data[row_i])
 
+            # Strip italic from notice period row (row 0)
+            if len(table.rows) >= 1:
+                _strip_italic_from_cell(table.cell(0, 0))
+                _strip_italic_from_cell(table.cell(0, 1))
+
             if not show_quals and len(tbl_detail.tr_lst) >= 4:
                 tbl_detail.remove(tbl_detail.tr_lst[3])
             if not show_edu and len(tbl_detail.tr_lst) >= 3:
@@ -373,7 +392,7 @@ def generate_shortlist(
             text = para.text.strip()
             if "CHIEF EXECUTIVE OFFICER" in text:
                 for run in para.runs:
-                    run.text = role_title.upper()
+                    run.text = role_title
             elif text == "Unico Group":
                 for run in para.runs:
                     run.text = client_name

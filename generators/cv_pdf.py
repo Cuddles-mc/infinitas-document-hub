@@ -35,7 +35,7 @@ REFERENCES_HEADERS = {
 def _create_cover_page(candidate_name: str, client_name: str) -> bytes:
     """Generate a branded cover page PDF from the DOCX template.
 
-    Fills 'PROFILE OF' and 'Prepared for' paragraphs, converts to PDF via MS Graph.
+    Fills 'CV of' and 'Prepared for' paragraphs, converts to PDF via MS Graph.
     """
     from docx import Document
 
@@ -43,11 +43,11 @@ def _create_cover_page(candidate_name: str, client_name: str) -> bytes:
 
     for para in doc.paragraphs:
         text = para.text.strip()
-        if text.startswith("PROFILE OF"):
+        if text.startswith("CV of"):
             # Append candidate name to the existing run
             for run in para.runs:
-                if "PROFILE OF" in run.text:
-                    run.text = f"PROFILE OF {candidate_name.upper()}"
+                if "CV of" in run.text:
+                    run.text = f"CV of {candidate_name}"
                     break
         elif text.startswith("Prepared for"):
             for run in para.runs:
