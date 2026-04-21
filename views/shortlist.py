@@ -295,8 +295,13 @@ def _render_upload_append():
         progress.progress(1.0, text="Done!")
 
         if candidates:
+            # NOTE: sl_existing_pptx is owned by the file_uploader widget (line 238);
+            # Streamlit forbids reassigning widget keys, so we store the raw bytes
+            # under a separate key. Previously writing to sl_existing_pptx here raised
+            # StreamlitAPIException and left sl_candidates set but sl_client_name
+            # unset, which then crashed _render_download on the next rerun.
             st.session_state.sl_candidates = candidates
-            st.session_state.sl_existing_pptx = existing_bytes
+            st.session_state.sl_existing_pptx_bytes = existing_bytes
             st.session_state.sl_existing_filename = existing_file.name
             st.session_state.sl_template = template_type
             st.session_state.sl_append_mode = True
@@ -424,7 +429,7 @@ def _parse_notes_docx(uploaded_file, candidates: list[dict]) -> dict[int, str]:
 def _render_review():
     # Back button
     if st.button("< Back to upload"):
-        for key in ("sl_candidates", "sl_existing_pptx", "sl_existing_filename", "sl_append_mode"):
+        for key in ("sl_candidates", "sl_existing_pptx_bytes", "sl_existing_filename", "sl_append_mode"):
             st.session_state.pop(key, None)
         st.rerun()
 
@@ -504,7 +509,7 @@ def _render_review():
                 use_executive = st.session_state.get("sl_template") == "executive"
 
                 if append_mode:
-                    existing_bytes = st.session_state.sl_existing_pptx
+                    existing_bytes = st.session_state.sl_existing_pptx_bytes
                     if use_executive:
                         from generators.shortlist_executive_pptx import append_candidates
                         pptx_bytes = append_candidates(existing_bytes, valid_candidates)
