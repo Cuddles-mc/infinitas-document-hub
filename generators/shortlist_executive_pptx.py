@@ -15,6 +15,8 @@ from pptx import Presentation
 from pptx.oxml.ns import qn
 from pptx.util import Emu
 
+from .shortlist_pptx import _strip_webextensions, _company_group_totals
+
 
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "shortlist-executive-template.pptx"
 PLACEHOLDER_PATH = Path(__file__).parent.parent / "assets" / "photo-placeholder.png"
@@ -268,8 +270,9 @@ def _fill_data_slide(slide, cand: dict, placeholder_bytes: bytes | None):
                 tbl.remove(tbl.tr_lst[-1])
 
             if template_row_xml is not None:
+                group_totals = _company_group_totals(career)
                 prev_company = None
-                for entry in career:
+                for idx, entry in enumerate(career):
                     new_row = deepcopy(template_row_xml)
                     company = entry.get("company", "")
                     title = entry.get("title", "")
@@ -277,7 +280,13 @@ def _fill_data_slide(slide, cand: dict, placeholder_bytes: bytes | None):
                     end = entry.get("end_date", "")
                     duration = _calc_duration(start, end)
 
-                    display_company = "" if company == prev_company else company
+                    if company == prev_company:
+                        display_company = ""
+                    else:
+                        display_company = company
+                        total = group_totals.get(idx)
+                        if total and company:
+                            display_company = f"{company} ({total} total)"
                     prev_company = company
 
                     values = [display_company, title, start, end, duration]
@@ -431,8 +440,7 @@ def generate_executive_shortlist(
     # --- Save ---
     buf = io.BytesIO()
     prs.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
+    return _strip_webextensions(buf.getvalue())
 
 
 def append_candidates(existing_pptx_bytes: bytes, candidates: list[dict]) -> bytes:
@@ -461,5 +469,4 @@ def append_candidates(existing_pptx_bytes: bytes, candidates: list[dict]) -> byt
 
     buf = io.BytesIO()
     prs.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
+    return _strip_webextensions(buf.getvalue())

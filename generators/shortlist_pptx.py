@@ -6,6 +6,8 @@ Font: Aptos throughout.
 """
 
 import io
+import re
+import zipfile
 from copy import deepcopy
 from datetime import datetime, date
 from pathlib import Path
@@ -14,6 +16,34 @@ from lxml import etree
 from pptx import Presentation
 from pptx.oxml.ns import qn
 from pptx.util import Emu
+
+
+def _strip_webextensions(pptx_bytes: bytes) -> bytes:
+    """Remove Office web add-in (taskpane) parts from a PPTX.
+
+    The Infinitas shortlist template carries a WA200010001 Office add-in that
+    auto-launches a taskpane and blocks text editing in tables. Strip it from
+    every generated file.
+    """
+    webext_rel_re = re.compile(
+        r'<Relationship Id="[^"]*" Type="http://schemas\.microsoft\.com/office/2011/relationships/webextensiontaskpanes" Target="[^"]*"/>')
+    webext_ct_re = re.compile(r'<Override PartName="/ppt/webextensions/[^"]*"[^/]*/>')
+
+    src = zipfile.ZipFile(io.BytesIO(pptx_bytes), 'r')
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(out_buf, 'w', zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            name = item.filename
+            if name.startswith('ppt/webextensions/'):
+                continue
+            data = src.read(name)
+            if name == '_rels/.rels':
+                data = webext_rel_re.sub('', data.decode('utf-8')).encode('utf-8')
+            elif name == '[Content_Types].xml':
+                data = webext_ct_re.sub('', data.decode('utf-8')).encode('utf-8')
+            dst.writestr(item, data)
+    src.close()
+    return out_buf.getvalue()
 
 
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "shortlist-template.pptx"
@@ -62,6 +92,61 @@ def _calc_duration(start_str: str, end_str: str) -> str:
         return f"{years} year{'s' if years != 1 else ''}, {months} month{'s' if months != 1 else ''}"
 
 
+def _company_group_totals(career: list[dict]) -> dict[int, str]:
+    """For each run of consecutive career entries at the same company, return
+    a map from the group's first-row index to a "X years, Y months" span
+    (earliest start -> latest end across all roles in the group).
+
+    Single-role groups are excluded — their row already shows the duration.
+    """
+    totals: dict[int, str] = {}
+    i = 0
+    n = len(career)
+    while i < n:
+        company = career[i].get("company", "")
+        group_end = i
+        while group_end + 1 < n and career[group_end + 1].get("company", "") == company:
+            group_end += 1
+        if group_end > i:
+            group = career[i : group_end + 1]
+            # Earliest start across the group
+            earliest = None
+            for e in group:
+                s = e.get("start_date", "")
+                if not s:
+                    continue
+                try:
+                    d = datetime.strptime(s, "%b %Y").date()
+                except ValueError:
+                    continue
+                if earliest is None or d < earliest[0]:
+                    earliest = (d, s)
+            # Latest end — "Present" dominates
+            has_current = any(
+                not e.get("end_date") or e.get("end_date", "").lower() == "present"
+                for e in group
+            )
+            if has_current:
+                latest_str = "Present"
+            else:
+                latest = None
+                for e in group:
+                    ed = e.get("end_date", "")
+                    if not ed:
+                        continue
+                    try:
+                        d = datetime.strptime(ed, "%b %Y").date()
+                    except ValueError:
+                        continue
+                    if latest is None or d > latest[0]:
+                        latest = (d, ed)
+                latest_str = latest[1] if latest else ""
+            if earliest and latest_str:
+                totals[i] = _calc_duration(earliest[1], latest_str)
+        i = group_end + 1
+    return totals
+
+
 def _set_row_cell_text(row_elem, col_idx: int, text: str):
     """Set text in a cloned table row's cell via XML, preserving formatting."""
     cells = row_elem.findall(qn("a:tc"))
@@ -82,6 +167,69 @@ def _set_row_cell_text(row_elem, col_idx: int, text: str):
         t = r.find(qn("a:t"))
         if t is not None:
             t.text = text
+
+
+def _set_row_cell_multi_paragraph(row_elem, col_idx: int, lines: list[str]):
+    """Set a cell to multiple paragraphs, cloning formatting from the first one.
+
+    Used for the Company column when there are multiple roles at a company —
+    line 1 is the company name, line 2 is the total tenure.
+    """
+    cells = row_elem.findall(qn("a:tc"))
+    if col_idx >= len(cells):
+        return
+    tc = cells[col_idx]
+    txBody = tc.find(qn("a:txBody"))
+    if txBody is None:
+        return
+    existing = txBody.findall(qn("a:p"))
+    if not existing:
+        return
+    template_p = deepcopy(existing[0])
+    for p in existing:
+        txBody.remove(p)
+    for line in lines:
+        new_p = deepcopy(template_p)
+        runs = new_p.findall(qn("a:r"))
+        for extra in runs[1:]:
+            new_p.remove(extra)
+        r = new_p.find(qn("a:r"))
+        if r is not None:
+            t = r.find(qn("a:t"))
+            if t is not None:
+                t.text = line
+        txBody.append(new_p)
+
+
+def _strip_cell_fill(tc):
+    """Remove any solid/no/grad/pat fills from a table cell's tcPr."""
+    tcPr = tc.find(qn("a:tcPr"))
+    if tcPr is None:
+        return
+    for tag in ("a:solidFill", "a:noFill", "a:gradFill", "a:blipFill", "a:pattFill"):
+        for el in tcPr.findall(qn(tag)):
+            tcPr.remove(el)
+
+
+def _apply_cell_fill_scheme(tc, scheme_val: str):
+    """Apply a solid schemeClr fill (e.g. 'bg1' or 'bg2') to a table cell."""
+    tcPr = tc.find(qn("a:tcPr"))
+    if tcPr is None:
+        tcPr = etree.SubElement(tc, qn("a:tcPr"))
+    _strip_cell_fill(tc)
+    solid = etree.SubElement(tcPr, qn("a:solidFill"))
+    sch = etree.SubElement(solid, qn("a:schemeClr"))
+    sch.set("val", scheme_val)
+
+
+def _set_column_widths_emu(tbl_elem, widths_emu: list[int]):
+    """Override each <a:gridCol w=...> in the table's <a:tblGrid>."""
+    grid = tbl_elem.find(qn("a:tblGrid"))
+    if grid is None:
+        return
+    cols = grid.findall(qn("a:gridCol"))
+    for col, w in zip(cols, widths_emu):
+        col.set("w", str(w))
 
 
 def _set_detail_cell(cell, text: str):
@@ -285,22 +433,67 @@ def _fill_candidate_slide(slide, cand: dict, placeholder_bytes: bytes | None):
                 tbl.remove(tbl.tr_lst[-1])
 
             if template_row_xml is not None:
-                prev_company = None
-                for entry in career:
-                    new_row = deepcopy(template_row_xml)
-                    company = entry.get("company", "")
-                    title = entry.get("title", "")
-                    start = entry.get("start_date", "")
-                    end = entry.get("end_date", "")
-                    duration = _calc_duration(start, end)
+                # Column widths that Tate settled on manually: narrow dates,
+                # wider Company column to hold "Company / X years total" on two lines.
+                _EMU = 914400
+                _CAREER_WIDTHS = (1.78, 2.34, 0.91, 0.83, 1.28)
+                _set_column_widths_emu(tbl, [int(w * _EMU) for w in _CAREER_WIDTHS])
 
-                    display_company = "" if company == prev_company else company
-                    prev_company = company
+                # Build groups of consecutive roles at the same company.
+                groups: list[tuple[str, list[int]]] = []
+                i = 0
+                while i < len(career):
+                    comp = career[i].get("company", "")
+                    j = i
+                    while j + 1 < len(career) and career[j + 1].get("company", "") == comp:
+                        j += 1
+                    groups.append((comp, list(range(i, j + 1))))
+                    i = j + 1
 
-                    values = [display_company, title, start, end, duration]
-                    for col_i, val in enumerate(values):
-                        _set_row_cell_text(new_row, col_i, val)
-                    tbl.append(new_row)
+                group_totals = _company_group_totals(career)
+
+                for group_idx, (company, indices) in enumerate(groups):
+                    # Alternate banding per group (not per row), so a merged
+                    # multi-row group reads as a single band.
+                    scheme = "bg1" if group_idx % 2 == 0 else "bg2"
+                    total = group_totals.get(indices[0])
+
+                    for pos, row_idx in enumerate(indices):
+                        entry = career[row_idx]
+                        new_row = deepcopy(template_row_xml)
+                        title = entry.get("title", "")
+                        start = entry.get("start_date", "")
+                        end = entry.get("end_date", "")
+                        duration = _calc_duration(start, end)
+
+                        cells = new_row.findall(qn("a:tc"))
+
+                        # Company column: merged across multi-role groups,
+                        # with "Company" / "X years total" stacked on two lines.
+                        if pos == 0:
+                            if len(indices) > 1 and total:
+                                _set_row_cell_multi_paragraph(
+                                    new_row, 0, [company, f"{total} total"]
+                                )
+                                cells[0].set("rowSpan", str(len(indices)))
+                            else:
+                                _set_row_cell_text(new_row, 0, company)
+                        else:
+                            _set_row_cell_text(new_row, 0, "")
+                            cells[0].set("vMerge", "1")
+
+                        _set_row_cell_text(new_row, 1, title)
+                        _set_row_cell_text(new_row, 2, start)
+                        _set_row_cell_text(new_row, 3, end)
+                        _set_row_cell_text(new_row, 4, duration)
+
+                        # Apply band fill to every cell in this row (including
+                        # the merged Company cell on its top row; continuation
+                        # cells are invisible anyway but kept consistent).
+                        for c in cells:
+                            _apply_cell_fill_scheme(c, scheme)
+
+                        tbl.append(new_row)
 
         # Details table
         elif shape.name == "Table 2":
@@ -421,8 +614,7 @@ def generate_shortlist(
     # --- Save ---
     buf = io.BytesIO()
     prs.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
+    return _strip_webextensions(buf.getvalue())
 
 
 def append_candidates(existing_pptx_bytes: bytes, candidates: list[dict]) -> bytes:
@@ -446,5 +638,4 @@ def append_candidates(existing_pptx_bytes: bytes, candidates: list[dict]) -> byt
 
     buf = io.BytesIO()
     prs.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
+    return _strip_webextensions(buf.getvalue())
