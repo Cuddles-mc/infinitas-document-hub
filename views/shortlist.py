@@ -747,14 +747,24 @@ def _render_candidate_editor(idx: int, cand: dict):
 # Step 3: Download
 # ---------------------------------------------------------------------------
 def _render_download():
+    # Guard: sl_pptx_bytes can survive when its companions (client/role/candidates)
+    # are popped by Back navigation or cleared by Streamlit Cloud between sessions.
+    # If that happens, drop the dangling PPTX state and drop back to upload rather
+    # than crash on attribute access.
+    required = ("sl_client_name", "sl_role_title", "sl_candidates", "sl_pptx_filename")
+    if not all(k in st.session_state for k in required):
+        for k in ("sl_pptx_bytes", "sl_pptx_filename"):
+            st.session_state.pop(k, None)
+        st.rerun()
+
     # Back button
     if st.button("< Back to review"):
         del st.session_state["sl_pptx_bytes"]
         del st.session_state["sl_pptx_filename"]
         st.rerun()
 
-    client_name = st.session_state.sl_client_name
-    role_title = st.session_state.sl_role_title
+    client_name = st.session_state.get("sl_client_name", "")
+    role_title = st.session_state.get("sl_role_title", "")
     candidates = st.session_state.sl_candidates
     filename = st.session_state.sl_pptx_filename
 
