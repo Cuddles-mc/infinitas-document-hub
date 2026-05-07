@@ -277,7 +277,19 @@ def _build_banner(doc, title="Reference Check"):
 
 
 def _build_details(doc, meta):
-    """Details table: header row + metadata rows. 3 cols (label / title / company)."""
+    """Details table: header row + metadata rows.
+
+    3-col grid:
+      col 0 = label
+      col 1 = primary value (title)
+      col 2 = secondary value (employer/company)
+
+    Single-value rows (date / candidate / position / referee) merge cols 1+2
+    so the value spans the full width — no empty third cell on the right.
+
+    Split rows (Current Title and employer / Previous role and employer) keep
+    cols 1 and 2 separate so title and company sit side-by-side.
+    """
     title_now, company_now = _split_title_company(meta.get("referee_title", ""))
     if meta.get("referee_current_title"):
         title_now = meta["referee_current_title"]
@@ -290,11 +302,12 @@ def _build_details(doc, meta):
     if meta.get("referee_previous_company"):
         company_prev = meta["referee_previous_company"]
 
+    # (label, value_col1, value_col2_or_None). None → merge cols 1+2.
     rows = [
-        ("Reference date",                            meta.get("date", ""),       ""),
-        ("Candidate",                                 meta.get("candidate", ""),  ""),
-        ("Position applied for",                      meta.get("position", ""),   ""),
-        ("Referee",                                   meta.get("referee", ""),    ""),
+        ("Reference date",                            meta.get("date", ""),       None),
+        ("Candidate",                                 meta.get("candidate", ""),  None),
+        ("Position applied for",                      meta.get("position", ""),   None),
+        ("Referee",                                   meta.get("referee", ""),    None),
         ("Current Title and employer",                title_now,                  company_now),
         ("Previous role AND EMployer (If Different)", title_prev,                 company_prev),
     ]
@@ -311,9 +324,21 @@ def _build_details(doc, meta):
     for i, (label, val1, val2) in enumerate(rows):
         row = table.rows[i + 1]
         _row_cant_split(row)
-        lcell, vcell, ccell = row.cells[0], row.cells[1], row.cells[2]
+
+        if val2 is None:
+            # Single-value row — merge cols 1+2 so value spans the full width
+            row.cells[1].merge(row.cells[2])
+            lcell = row.cells[0]
+            vcell = row.cells[1]
+            cells_to_style = (lcell, vcell)
+        else:
+            lcell = row.cells[0]
+            vcell = row.cells[1]
+            ccell = row.cells[2]
+            cells_to_style = (lcell, vcell, ccell)
+
         _shd(lcell, SOFT)
-        for c in (lcell, vcell, ccell):
+        for c in cells_to_style:
             _cell_margins(c, top=120, bottom=120, left=160, right=120)
             _borders(
                 c,
@@ -322,15 +347,19 @@ def _build_details(doc, meta):
                 bottom={"sz": 6, "color": BOX},
                 right={"sz": 6, "color": BOX},
             )
+
         lp = lcell.paragraphs[0]
         lp.paragraph_format.space_after = Pt(0)
         _run(lp, label, size=8.5, color=LBL, caps=True, letter_spacing=40)
+
         vp = vcell.paragraphs[0]
         vp.paragraph_format.space_after = Pt(0)
         _run(vp, val1, size=10.5, color=NAVY, bold=True)
-        cp = ccell.paragraphs[0]
-        cp.paragraph_format.space_after = Pt(0)
-        _run(cp, val2, size=10.5, color=NAVY, bold=True)
+
+        if val2 is not None:
+            cp = ccell.paragraphs[0]
+            cp.paragraph_format.space_after = Pt(0)
+            _run(cp, val2, size=10.5, color=NAVY, bold=True)
 
     sp = doc.add_paragraph()
     sp.paragraph_format.space_before = Pt(0)
