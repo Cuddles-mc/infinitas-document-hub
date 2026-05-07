@@ -18,14 +18,22 @@ def process_reference_transcript(
     candidate_name: str,
     position: str,
     referee_name: str,
-    referee_title: str,
-    referee_previous: str,
+    referee_current_title: str,
+    referee_current_company: str,
+    referee_previous_title: str,
+    referee_previous_company: str,
     transcript: str,
+    additional_questions: list[str] | None = None,
 ) -> dict[str, str]:
-    """Send transcript to Claude API, return dict of 26 answers.
+    """Send transcript to Claude API, return dict of answers.
+
+    Args:
+        additional_questions: Optional list of custom reference questions.
+            These are appended to the standard 26 with sequential indices
+            starting at 26. The AI returns answers for all keys.
 
     Returns:
-        Dict with keys "0" through "25", each containing the answer text.
+        Dict with keys "0" through f"{25 + len(additional_questions)}".
 
     Raises:
         ValueError: If the API response cannot be parsed as valid JSON.
@@ -35,13 +43,25 @@ def process_reference_transcript(
     system_prompt = _load_prompt("reference_check_system.txt")
     user_template = _load_prompt("reference_check_user.txt")
 
+    extras = additional_questions or []
+    if extras:
+        lines = ["", "ADDITIONAL QUESTIONS:"]
+        for idx, q in enumerate(extras, start=26):
+            lines.append(f"{idx}: {q}")
+        additional_questions_block = "\n".join(lines) + "\n"
+    else:
+        additional_questions_block = ""
+
     user_message = user_template.format(
         candidate_name=candidate_name,
         position=position,
         referee_name=referee_name,
-        referee_title=referee_title,
-        referee_previous=referee_previous or "N/A",
+        referee_title=referee_current_title or "N/A",
+        referee_current_company=referee_current_company or "N/A",
+        referee_previous_title=referee_previous_title or "N/A",
+        referee_previous_company=referee_previous_company or "N/A",
         transcript=transcript,
+        additional_questions_block=additional_questions_block,
     )
 
     response = client.messages.create(
@@ -51,10 +71,8 @@ def process_reference_transcript(
         messages=[{"role": "user", "content": user_message}],
     )
 
-    # Extract text content
     text = response.content[0].text.strip()
 
-    # Strip markdown code fences if present
     if text.startswith("```"):
         text = text.split("\n", 1)[1]
         if text.endswith("```"):
@@ -62,8 +80,8 @@ def process_reference_transcript(
 
     answers = json.loads(text)
 
-    # Validate all 26 keys present
-    for i in range(26):
+    total = 26 + len(extras)
+    for i in range(total):
         if str(i) not in answers:
             answers[str(i)] = "[GAP] Not addressed in transcript."
 

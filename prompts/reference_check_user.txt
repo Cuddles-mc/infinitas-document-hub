@@ -2,9 +2,11 @@ Candidate: {candidate_name}
 Role applied for: {position}
 Referee: {referee_name}
 Referee current position: {referee_title}
-Referee previous position: {referee_previous}
+Referee current employer: {referee_current_company}
+Referee previous position: {referee_previous_title}
+Referee previous employer: {referee_previous_company}
 
 TRANSCRIPT:
 {transcript}
-
-Read the entire transcript and write an answer for each of the 26 questions. Return valid JSON only.
+{additional_questions_block}
+Read the entire transcript and write an answer for each question. Return valid JSON only. Provide one key per question, using "0" through "25" for the standard 26 plus sequential keys for any additional questions listed above.
