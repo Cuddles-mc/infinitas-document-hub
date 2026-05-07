@@ -243,33 +243,33 @@ def _section_header_row(table, row_idx, label, n_cols):
 # --- Section builders ---
 
 def _build_banner(doc, title="Reference Check"):
-    """Top navy banner with white title left + white logo right."""
+    """Top banner: navy title left + standard logo right on white. Matches the
+    hand-refined 08-real-aalia-from-rita.docx reference file (not the early
+    handover description, which said navy fill — that was superseded)."""
     hdr = doc.add_table(rows=1, cols=2)
     _table_full_width(hdr)
     _no_table_borders(hdr)
-    hdr.columns[0].width = Inches(4.4)
-    hdr.columns[1].width = Inches(2.4)
+    hdr.columns[0].width = Inches(4.0)
+    hdr.columns[1].width = Inches(2.7)
 
     cell_t = hdr.rows[0].cells[0]
     cell_l = hdr.rows[0].cells[1]
-    _shd(cell_t, NAVY)
-    _shd(cell_l, NAVY)
-    _cell_margins(cell_t, top=180, bottom=180, left=240, right=120)
-    _cell_margins(cell_l, top=180, bottom=180, left=120, right=240)
+    _cell_margins(cell_t, top=0, bottom=0, left=0, right=0)
+    _cell_margins(cell_l, top=0, bottom=0, left=0, right=0)
     cell_t.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     cell_l.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
     pT = cell_t.paragraphs[0]
     pT.paragraph_format.space_before = Pt(0)
     pT.paragraph_format.space_after = Pt(0)
-    _run(pT, title, size=22, bold=True, color=WHITE)
+    _run(pT, title, size=22, bold=True, color=NAVY)
 
     pL = cell_l.paragraphs[0]
     pL.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     pL.paragraph_format.space_before = Pt(0)
     pL.paragraph_format.space_after = Pt(0)
-    if LOGO_WHITE.exists():
-        pL.add_run().add_picture(str(LOGO_WHITE), width=Inches(1.8))
+    if LOGO_FOOTER.exists():
+        pL.add_run().add_picture(str(LOGO_FOOTER), width=Inches(2.0))
 
     sp = doc.add_paragraph()
     sp.paragraph_format.space_before = Pt(0)
